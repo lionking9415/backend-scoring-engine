@@ -1,0 +1,170 @@
+# Meeting Transcript: Dr. Sherilyn Crump & Gregory (Backend Engineer Interview)
+
+**Date:** March 23, 2026
+**Participants:**
+- **Dr. Sherilyn Crump** (Professor, Entrepreneur, Behavior Analyst)
+- **Gregory** (Backend Engineer Candidate)
+
+---
+
+**[00:26] Dr. Crump:** Good morning Gregory, are you there? 
+
+**[00:28] Gregory:** Yes ma'am, I am here. How are you? 
+
+**[00:30] Dr. Crump:** I am great. Hold on one second, I'll be right with you. 
+
+**[00:33] Gregory:** Sure. 
+
+*(Pause)*
+
+**[01:34] Gregory:** Hello there. 
+
+**[01:35] Dr. Crump:** How are you? 
+
+**[01:36] Gregory:** I'm good, how are you today? 
+
+**[01:38] Dr. Crump:** I am doing great. Well, thank you for taking the time to meet with me this morning. 
+
+**[01:43] Gregory:** No problem, thanks for having me. 
+
+**[01:46] Dr. Crump:** Yes, you look a lot different than your picture. You have dreads and your hair is grown out. 
+
+**[01:50] Gregory:** Yeah, it's an older picture. 
+
+**[01:52] Dr. Crump:** I understand. My professional picture I have braids, so I completely get it. Well, good morning. So I'm Sherilyn Crump, I'm Dr. Crump. I'm a professor, I'm an entrepreneur, own my own business, I'm a behavior analyst. I do a lot of things. So thank you for meeting with me. I'll tell you a little bit about myself and why I'm here, why I'm looking for a backend engineer, how this all has evolved, and hopefully you'll be able to help me. There has been a lot of candidates that have applied and I really don't want to have to go into interviews, if I have to I have to, but I have picked out like four top candidates and you're one of them. 
+
+**[02:44] Gregory:** Awesome. 
+
+**[02:46] Dr. Crump:** And so I just want to kind of connect and just see who seems to be vibing with me and go from there. So, thank you. As I mentioned, I'm Sherilyn Crump. I've been in the field of applied behavior analysis now for 30 years. Don't start doing numbers, don't start counting, I'll give away my age. But so, applied behavior analysis looks at how to change behavior, looking at environmental factors to change behaviors. And it can range from our little guys and looking at ADHD, neurodiversity, autism, all the way to trying to change your pets, your spouses, and your boss. Trying to change everybody. And it's not really so much looking at the psychology, even though that does play as one of the internal factors or the probable factors, but a lot of times looking at the probabilities, looking at those things on the outside, looking at those environmental cues to be able to change. 
+
+And so with that being said, my primary work is really looking at executive functioning and looking at the prefrontal cortex and looking at those things that many times with school we really don't look at changing or, I should say, training executive functioning skills. So looking at on-task performance, looking at task completion, looking at being able to build those skills to really train, especially our Black and Brown students, to really understand what to do, to build those skills. We want to tell everyone to "stop doing this, do this, do that," and unfortunately those skill sets aren't really being trained appropriately. So, with all that being said, I have an assessment tool that I have developed. And it is quite good, I must say. Before I go any further, do you have any questions for me? 
+
+**[04:46] Gregory:** Um, no. I would just like to say this probably seems like it's right up my alley. I was just recently working with a company called Teachstone, which is in early childhood education, and I developed their first AI tool around the CLASS framework. So I am basically taking in teacher videos and then we're applying the CLASS framework using AI, and then we're delivering reports to the teacher about how they can improve their interactions with the students. And this sounds similar in the way that you want to try to map human behavior to actionable, measurable outcomes. And yeah, I think this would be—this already is screaming to me like, okay, I would really enjoy doing this because I really do enjoy education, especially early childhood education, because it actually has purpose and the work we do is important. So, I would love to hear more about this. 
+
+**[05:43] Dr. Crump:** Okay, yes. So I just got chills. So that's really good. Also just to let you know, I'm in the process of changing universities and I just got hired on... I'm in the process of being hired on with FAMU. So I'm starting up their ABA program. So it's the first HBCU that will have an ABA program, and I will be heading up their undergrad and master's program, and I'm pushing them to do a PhD program. So with that being said, what's your alma mater? 
+
+**[06:13] Gregory:** Uh, Clark. 
+
+**[06:16] Dr. Crump:** That's right. So I noticed some things too and I was like, you know what, let me make some connections here. So outstanding. Okay, so because of the work that you've also done, you will also understand how a lot of our teachers are struggling with classroom management. They want to change everybody else. They think that it's not about classroom management, it's about telling everyone to sit down, be quiet, do your work when they're not understanding it's about building skill sets. Building those skill sets and reducing those environmental cues to be able to help our students be successful. And there's a lot that goes into that. So, I can keep going on and on, but I would like to hear just a little bit more about what you've done as far as with tech when it comes to supporting classroom teachers, if you don't mind. 
+
+**[07:27] Gregory:** Yeah, yeah. That's pretty much been all I've been doing for the last two and a half years is working for Teachstone and trying to help them build out tools that can support teachers because we understand that not just in early childhood education, but in education across the board, the teachers are under-supported. They're underpaid. They don't have the tools they need. They don't have the time that they need to do their jobs correctly. So at Teachstone, we try to create tools that would help those teachers alleviate or at least relieve those pain points slightly, if not completely. And so far it's been really successful. Teachers were used to getting observed in classrooms maybe once a year if they were lucky enough to be chosen that year. And that means that a lot of these teachers weren't getting actionable feedback, if any at all. So a lot of teachers were just trying to self-improve and they had no benchmark metric to gauge their performance against. With the tool that we built now, they can train seven days a week if they wanted to. If they wanted to upload a video of their class Monday through Friday they could and get actionable feedback about how they're performing every single day and implement that change and continue to upload and see that their score performance is improving. 
+
+So that was really we built that thing to help people and it has a bunch of dimensions. It has three domains. It has 10 dimensions. It has five to seven indicators in each dimension. And those are all scored and rolled up to aggregate into a dimension score. And then we use those dimension scores to kind of say, "Okay, you scored really high in productivity, you're managing the children's time well, you're giving very good instructions," and then we go to another domain or dimension like behavior management. And then we explain what they did well there, and then we might find one where there's an area for growth where they could improve, and then we try to give them positive feedback in a way that they can actually use the next time they're in the classroom. And that's what I've been building for like the last two years. It's been really tough because we're implementing AI into this as well. So there's a lot of validation work that goes into the beginning half of it as well as the output. Like we have to validate our input just as much if not more than our output. And it takes partnering with someone who's almost like a domain master, someone who knows the domain in and out. And partnering that person with someone in tech will give you the outcomes that you're looking for. Because you have the person that knows what the outcome is supposed to be, and then you have the person that knows how to implement the instructions or the code in the way to create those outcomes that your partner wants. 
+
+**[10:24] Dr. Crump:** Yes, very much so. So let's talk about—well, first of all, thank you for sharing that because everything you're saying is exactly right on and I get it. The lack of resources, the lack of support, even with the teacher training, the teacher training is definitely not enough. Even with senior teachers, by the time they become senior teachers they're so burned out. As you mentioned the pay is not enough. There's just it's just overwhelming the expectations that are placed on them. Not to mention all those variables when it comes to the lack of parent support or even if they do have parent support, the helicopter parents. IEPs. And then students aren't placed necessarily in the correct level of class support that's needed. Down to administration. There's just so much overwhelming issues. And then behaviors. And then the student academically isn't really placed appropriately. There's just so much. And so it sounds as though with the tool that you're building, the resources that you're providing is phenomenal and will definitely help in sustaining what teachers need to be able to help them teach. 
+
+**[11:46] Gregory:** Exactly. Why are they there anyway? To teach. Exactly. 
+
+**[11:51] Dr. Crump:** With the project that I'm doing and with the assessment, it is looking at executive functioning skills. Those pro skills, those pre-skills, those skills that are needed to be able to be ready for learning. Because we're not really looking at those skills that are needed to learn. We're just kind of pushing students through. And, you know about the school-to-prison pipeline. By the time they get to the third grade, they're building prison beds based upon those assessment scores. So they rather put the money into "you're gonna be a criminal" instead of "let's build these skill sets to help build them up," especially for us. And so you're already—I don't even need to keep going on. But no one ever looked at can we prepare them. Some of our students for whatever reason, in kindergarten, preschool, they come in, walk in line, and they understand. They know how to raise their hands, self-advocate, and they can ask questions. Others, we have Tommy over here flipping around on the rug. They have no idea what they're looking at and they see the plane and now they're looking outside the window. "Hello, I'm over here, I'm talking to you." And they have their back turned to the teacher and they're talking to their friend. 
+
+**[13:11] Gregory:** Absolutely. And where's the engagement there? 
+
+**[13:17] Dr. Crump:** So they don't even know what to do and how to transition appropriately. Not even transition from location to location outside the classroom, but activity to activity within the classroom. So, what this assessment tool is looking at, it's looking at all basically 12 executive functioning skills and looking at where the baseline is. Not only is it looking at that, but the assessment also looks at the baseline and how to execute. And then I have aims for the best. And so there's interventions that come in, allowing that sort of AI comes in with it, to generate what to do to build those skill sets and why those behaviors are happening. The behaviors are happening because there's a lack of skill sets. 
+
+**[14:16] Gregory:** Right. 
+
+**[14:18] Dr. Crump:** So to decrease those behaviors what has to happen is we have to increase the skills. You can't say "stop, stop, stop" to decrease the behaviors, you have to increase the skills. They're covariants of each other. So with that said, I have four reports. And those four reports all stem from those 52 questions. So you have a choice. No matter who you are, even as an adult, you could take the exact same assessment that a student can take. Depending on the lens, those 52 questions will answer either your personal lifestyle executive functioning execution, your student success executive functioning skills, your professional leadership executive functioning skills, or your ecosystem within a family dynamic. So you could take those 52 questions and depending on the lens that you want the report to generate, your executive functioning, although you scored exactly the same because of the exact same assessment, because of the lens and that report, your executive functioning because of your environment it will be executed differently. 
+
+**[15:42] Gregory:** Absolutely. Yeah, that sounds awesome. 
+
+**[15:44] Dr. Crump:** Yes. So in a sense it kind of goes with you based upon your environment and your developmental level and your skill set. So your aims for success, your interventions will be different based upon are you in a professional setting or are you in a classroom? 
+
+**[16:08] Dr. Crump:** So going back to what I need an engineer for. This may be hard. And please be honest with me. I'm looking for someone that can tease out all different layers of being able to tease out the framework from the comps. Because we're going to evolve using AI. We can't connect the framework and the computations because if we do that, as we evolve it's going to become a mess. As we evolve, we have to have them separated out. Does that make sense? 
+
+**[16:55] Gregory:** Yes, separation of concerns. 
+
+**[16:58] Dr. Crump:** Perfect. So my first question is, and as I said this is not an interview even though it kind of sounds like it, I just kind of want to know how your brain thinks. What would your approach be with your scoring system from separating out the conceptual framework from the computation layer? 
+
+**[17:17] Gregory:** Uh, so if we're going to do that, we would definitely separate those two because we don't want scoring instructions and our computation layer to be the same. We would put that in a configuration. And we would have that so if we ever need to change it we're logging that change and we're knowing where we came from, what was it like before, where is it now. And then if we have to add or subtract anything we can do that from that configuration. And our scoring logic should not change at all based on that. 
+
+**[17:48] Dr. Crump:** Okay. So obviously you can separate out the two. 
+
+**[17:52] Gregory:** Yes, yes. 
+
+**[17:59] Dr. Crump:** Because I've had some people say they want to try to shrink down to make it easier for them at the beginning and I'm concerned about that. 
+
+**[18:08] Gregory:** Yeah, no I wouldn't suggest shrinking it. I think what you have works. So we don't need to change that. What we need to do is we need to interpret that. So we would take those 52 questions and depending on what lens we're looking through, we would aggregate those scores into three separate categories or more depending on how many lenses we have. And then we would score them based on that aggregate. We wouldn't simplify it at all because I think that removes that level of detail that you need to actually predict these behaviors and teach to stop the behavior. So, yeah, we would take all 52 questions, figure out how to roll them up and get them into an aggregate so we can score them correctly depending on the lens. 
+
+**[19:04] Dr. Crump:** Outstanding. Okay. Thank you. What do you think are the biggest risks when building a scoring engine that may evolve over time? 
+
+**[19:21] Gregory:** I think baking in your configurations to the scoring system is what will bite you in the long run. If you're going to make something scalable you need to separate all your concerns, not just one or two, anything that you can abstract you do that. As long as we're not interfering with accuracy, we abstract. And to make things scalable is not necessarily hard. I think it's just about making the correct decisions early on. Taking some time to think about your architecture. Not rushing it. Future-proofing it by looking at scalability and saying, okay we're not there yet, but what is this going to look like when there's 20,000 users on it at the same time? Can we handle that load? 
+
+**[20:28] Dr. Crump:** Okay, love it. I think you're getting it. 
+
+**[20:32] Gregory:** Yeah, I mean this is pretty much what I just did for Teachstone. It's just a different application and a different framework so there's a lot of overlap. It's just not the IP portion of it, so that's great. 
+
+**[20:50] Dr. Crump:** Oh this is outstanding. When a conceptual model has come from a subject matter expert, not an engineer, how will you translate that into software architecture? So let me explain this. My background is education, psychology, applied behavior analysis... I don't know engineering, I don't know coding. So I need someone that can translate my language. How would you be able to work with me with my lack of understanding what you need to do? 
+
+**[22:12] Gregory:** I don't think you have a lack of understanding. I think you understand exactly what you're supposed to understand. You're the domain expert. I am the engineer. You tell me what you want, I'll figure out how to make it work. And then you tell me if it's what you want, and if it's not what you want, I'll go back and make it work the way you want it to. I don't think you should have to change how you convey what you want, because you know what you want. You are the person that's doing this. You're gonna tell me what you want, I'll figure out how to make it work and to your standard. 
+
+**[22:52] Dr. Crump:** Love that. I also, what I'm seeing in you, which I really like, is humility. 
+
+**[23:04] Gregory:** Yes, I was actually born in Japan, so I lived out there for a while. And it was just kind of ingrained into me. Like we always downplay how well we're doing even if we're doing really well. We don't want to make other people feel affected by that. 
+
+**[23:22] Dr. Crump:** Okay. This is great. All right. I think you pretty much understand what I'm doing and where I'm going. There is an AI aspect to all of this. With the reports, I have the structured part in it with what the reports need to say. However, I want that individualism in it to where it's not so structured that everyone's report looks identical. 
+
+**[24:03] Gregory:** Right, you don't want it to be a cookie cutter. 
+
+**[24:06] Dr. Crump:** Exactly. And there's also archetypes. I have 16 archetypes that will be generated based upon how each of the customers will answer. Okay, so my goal is... where I'm limited and where all experts are limited when it comes to behavior change... just a little note, one day I was with my three children, they're one's out of college he needs to go back to get his masters, I have two in college. When they were little we were at Disneyland. And that place is so expensive. And I was in line with them, one in a stroller, two holding on to the stroller, I was just like, "I need residual income. I need to be able to replicate myself. If I had five of me, I would be cleaning up." And what I didn't want was a bunch of people under me because that becomes another headache because now you're dealing with people problems. So I was thinking tech. So I came up with the assessment tool and then I went back to school and got my doctorate at Pepperdine. I did my dissertation on an assessment classroom behavior continuum scale. Fast forward, I realized we have student success issues at the master level, the same issues that we have with our younger kiddos. So then I started working on this. I built these 52 questions. And it hit me, I need to put this on social media. I need an engineer to be able to put this and I want to get this on social media so that now we can start targeting this group of kids that have been so stuck on social media and their attention span is as long as a tsetse fly. 
+
+**[28:48] Gregory:** Yeah, it's crazy. 
+
+**[28:50] Dr. Crump:** And my daughter's 24 and she's like, "Mom, I'm sorry, nobody's gonna want to listen to Professor Crump talking about, do you have executive functioning issues?" So we're trying to come up with creative ways. The bottom line is we gotta get this assessment tool online, they need to click on the assessment and take it and then generate these reports. The assessment is only 10 minutes long. The reports generated and then we can start to funnel them to trainings. Let's just get the assessment on there so they can get a report, get an intervention plan, and figure out what they can do to help with their executive functioning skills. 
+
+**[29:48] Gregory:** No, that doesn't sound like a horribly difficult task. Creating like a survey website... It's pretty straightforward. We display the questions, we give them a radio multiple choice, they select it, we log it and save it in the database. When it comes time to generate the report we use all the answers, we roll them up into aggregate, we generate the report, we display the report on the front end. You're maybe looking at 90 days worth of work. 
+
+**[30:24] Dr. Crump:** Okay. So I need a landing page, a pay system, but I already have Wix. I already have the conceptual piece when it comes to taking them through their archetypes. I have the algorithms. I just need this assessment because we're dead in the water if we don't have the assessment connected to something for them to take with all the algorithms and the logic scoring. 
+
+**[31:23] Gregory:** Nice, so you have Wix already. But you don't have a landing page. Do you need a landing page? 
+
+**[31:28] Dr. Crump:** I need a landing page. I already have all my equations, the algorithms, looking at load, why behaviors increase or decrease based upon the load internally and externally. Which I'm like I think I just cracked the code to behavior. Then to add in the work-life balance as an equation into your load as a reset... 
+
+**[32:46] Gregory:** Yeah, this sounds really good. I know Wix is really easy to do quick fast pages and they have pay things set up. But if you're building out the custom survey tool, you might want to think about going with like Stripe because Stripe is a very easily integrated SDK. We can do subscription tiers, we can do one-off purchases. This goes directly to your bank account and it's I think a 2% fee, considerably less than most other processors and it's the safest, most trusted credit card processor. Building that landing page shouldn't take longer than a week and then after that we can pretty much attach the survey to it and payment with Stripe and it should be fairly simple. 
+
+**[34:15] Dr. Crump:** Oh my goodness. Okay, you are—this is really a blessing. I think the biggest challenge that I've been having is trying to figure out this engineering piece because I don't know. And then I have someone doing some graphics for me, I have my daughter with social media because she's like, "Ma, nah, you're not gonna embarrass me." So alright Gregory. Well, I have two more people. I'll go through the process. I really like this connection. I really like the work that you've done. I like how you get this. Give me till this next week, today is Wednesday? 
+
+**[35:54] Gregory:** Yes ma'am. 
+
+**[35:55] Dr. Crump:** Are you fine with me getting back to you next week? 
+
+**[35:58] Gregory:** Yeah, of course. Take your time. I know I want you to make the best decision. So if it ends up being me that's fine, if you find someone better I'm happy for you. And I had a quick question, are you in Northern California? 
+
+**[36:10] Dr. Crump:** I'm in Southern. 
+
+**[36:11] Gregory:** Southern California. Do you have any family in Northern California? 
+
+**[36:14] Dr. Crump:** Um, I do, but they don't have the same last name or anything like that. 
+
+**[36:20] Gregory:** Oh, okay, cause basically my play aunt when I was a kid, her name was Pamela Crump. 
+
+**[36:27] Dr. Crump:** Okay, no. And this is my ex-husband's name, so. And like "are you related to Ben Crump the attorney?" I'm like no. When we got divorced I just kept the name. My kids' name is Crump, why change it again? So. Well Gregory, you'll hear from me next week. So keep watching, I don't know how often you check your Upwork, but I'll reach out to you. 
+
+**[37:24] Gregory:** I check it every day. Thank you so much for this opportunity. It's been a pleasure. I love what you're doing and I wish you luck whether you select me or not. 
+
+**[37:37] Dr. Crump:** Okay, and do you have a problem signing an NDA? 
+
+**[37:39] Gregory:** Absolutely not. 
+
+**[37:40] Dr. Crump:** Okay. I don't want to be too rambunctious and too excited, but I really think this is going to be big because psychologists, they don't understand how to change behavior. Even in the field of applied behavior analysis is struggling. One thing I wanted to point out to you... looking at the different reports. As a student, let's say you're taking the assessment as a student. You're very good with being structured, very organized, reading very strongly. That very same student that executes very well as a student... when they translate when it comes to the professional leadership report, those same executive functioning skills actually becomes weaker. Because teachers with those organizational and strong suits become micromanagers. Become too rigid and they tend to struggle in a leadership position. So if you can imagine they were very strong as a student, but now place them as a teacher. Their load becomes too much and then now they start to overcompensate and now they're not as productive as a teacher and in that leadership role. 
+
+**[39:53] Gregory:** Yeah. 
+
+**[39:55] Dr. Crump:** Which is, to me when I started to realize all of this I was like that is fascinating. Teachers who are like, "I was so good as a student"... well you're not really good as a teacher right now because those things that you executed so well it's not really showing well in your leadership executive functioning skills. 
+
+**[40:19] Gregory:** Yeah, and that's really interesting and also really great for business because it always leaves that room for improvement. You're just shifting kind of laterally. So whether you're going back and forth or you're staying in one, or you want to move to another, you'll always know where you are as far as your executive skills in that role. That's super cool. 
+
+**[40:45] Dr. Crump:** Yes, and then it also speaks to why so many students that may have ADHD—because this obviously does not identify or diagnose anyone—but it just looks at those skills, and why so many students that had ADHD and struggle in school, why when they become leaders and professionals they're the ones that become the millionaires. 
+
+**[41:08] Gregory:** Yeah. 
+
+**[41:09] Dr. Crump:** And they're like "I did terrible in school" but then they get out in the real world and they're like, "pshhh, I did it." But then the ones who were all great and got in the GATE program and did great, then they end up getting a government job and they get stagnated. So I just, oh my goodness, I was like what did my brain figure out here. 
+
+**[41:41] Gregory:** Yeah, I can't wait to see where this goes because this is super cool and I would love to help you build this and get this out to the world as soon as possible. 
+
+**[41:51] Dr. Crump:** Yes, yes. Okay, so we're on the same page here. So I'm sitting here trying not to be too excited but yet I have to stay calm and I can't tell people because they don't know what she talking about. Alright Gregory. Well thank you, thank you for your time. And then you'll hear from me by next week. 
+
+**[42:11] Gregory:** Yes ma'am, thank you so much, it was great. We'll talk soon. 
+
+**[42:14] Dr. Crump:** Okay, thank you. Have a great day. 
+
+**[42:16] Gregory:** You too. Bye bye.

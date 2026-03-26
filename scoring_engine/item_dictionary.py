@@ -1,0 +1,1171 @@
+"""
+Item Coding Dictionary (Section 2)
+Defines all 52 assessment items from the BEST Executive Function Galaxy™ Assessment.
+This is the SINGLE SOURCE OF TRUTH for item definitions.
+
+Structure:
+  - 13 subdomains × 4 questions = 52 items
+  - Per subdomain: Q1=preferred context, Q2=non-preferred context,
+    Q3=coping/response, Q4=AIMS function question
+  - Behavioral items (item_type="behavioral"): scored A=4, B=3, C=2, D=1
+  - AIMS function items (item_type="aims"): categorical —
+    A=Attention, B=Sensory, C=Escape, D=Overwhelm
+  - Response options: A/B/C/D mapped to numeric 1–4
+  - All behavioral items use forward direction (A=best → D=worst → A=4,D=1)
+
+Each item includes:
+  - item_id, item_text, domain, subdomain, construct, direction, weight,
+    response_scale, min_score, max_score, item_type, response_options
+"""
+
+# =============================================================================
+# ABCD response option labels for behavioral items
+# =============================================================================
+
+ABCD_NUMERIC_MAP = {"A": 4, "B": 3, "C": 2, "D": 1}
+NUMERIC_ABCD_MAP = {4: "A", 3: "B", 2: "C", 1: "D"}
+
+# AIMS function categories (for every 4th question)
+AIMS_FUNCTION_MAP = {
+    "A": "ATTENTION",   # "You want attention or help"
+    "B": "SENSORY",     # "You want to do something enjoyable / stimulation"
+    "C": "ESCAPE",      # "You want to escape the task"
+    "D": "OVERWHELM",   # "You're overwhelmed inside"
+}
+
+ITEM_DICTIONARY = [
+    # =========================================================================
+    # SUBDOMAIN 1: TASK_INITIATION (Q01–Q04)
+    # Domain: EXECUTIVE_FUNCTION_SKILLS
+    # =========================================================================
+    {
+        "item_id": "Q01",
+        "item_text": "When it's something you WANT to do, you usually start:",
+        "response_options": {
+            "A": "Immediately",
+            "B": "Soon",
+            "C": "After reminders",
+            "D": "Much later or not at all",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "TASK_INITIATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q02",
+        "item_text": "When the task is boring or stressful, you usually start:",
+        "response_options": {
+            "A": "Quickly",
+            "B": "After reminders",
+            "C": "Near the deadline",
+            "D": "Avoid it completely",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "TASK_INITIATION",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q03",
+        "item_text": "When a task is due soon, you usually feel:",
+        "response_options": {
+            "A": "Motivated",
+            "B": "Neutral",
+            "C": "Anxious",
+            "D": "Shut down",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "TASK_INITIATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q04",
+        "item_text": "When you delay starting tasks, it's usually because:",
+        "response_options": {
+            "A": "You want attention or help",
+            "B": "You want to do something enjoyable",
+            "C": "You want to escape the task",
+            "D": "You're overwhelmed inside",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "TASK_INITIATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 2: ORGANIZATION (Q05–Q08)
+    # Domain: EXECUTIVE_FUNCTION_SKILLS
+    # =========================================================================
+    {
+        "item_id": "Q05",
+        "item_text": "For tasks you enjoy, your workspace/materials are usually:",
+        "response_options": {
+            "A": "Organized",
+            "B": "Mostly together",
+            "C": "Scattered",
+            "D": "Messy/avoided",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "ORGANIZATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q06",
+        "item_text": "For tasks you dislike, you prepare your materials:",
+        "response_options": {
+            "A": "Well",
+            "B": "Minimally",
+            "C": "At the last minute",
+            "D": "Not at all",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "ORGANIZATION",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q07",
+        "item_text": "When your workspace is cluttered, you:",
+        "response_options": {
+            "A": "Clean it",
+            "B": "Work around it",
+            "C": "Feel overwhelmed",
+            "D": "Shut down",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "ORGANIZATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q08",
+        "item_text": "When you struggle staying organized, it's usually because:",
+        "response_options": {
+            "A": "You need guidance",
+            "B": "You switch to something fun",
+            "C": "It's too much to handle",
+            "D": "It's mentally overwhelming",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "ORGANIZATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 3: PLANNING (Q09–Q12)
+    # Domain: EXECUTIVE_FUNCTION_SKILLS
+    # =========================================================================
+    {
+        "item_id": "Q09",
+        "item_text": "For tasks you enjoy, you usually plan:",
+        "response_options": {
+            "A": "Steps and timing",
+            "B": "Some next steps",
+            "C": "Last minute",
+            "D": "Not at all",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "PLANNING",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q10",
+        "item_text": "For tasks you dislike, you usually:",
+        "response_options": {
+            "A": "Still make a plan",
+            "B": "Guess the steps",
+            "C": "Wait for guidance",
+            "D": "Avoid thinking about it",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "PLANNING",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q11",
+        "item_text": "When you have multiple assignments, you:",
+        "response_options": {
+            "A": "Prioritize clearly",
+            "B": "Choose based on interest",
+            "C": "Get stuck deciding",
+            "D": "Freeze or avoid",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "PLANNING",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q12",
+        "item_text": "When planning is hard for you, it's usually because:",
+        "response_options": {
+            "A": "You want reassurance",
+            "B": "You choose something rewarding",
+            "C": "You want to escape difficult tasks",
+            "D": "It stresses you out internally",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "PLANNING",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 4: ACTIVATION (Q13–Q16)
+    # Domain: EXECUTIVE_FUNCTION_SKILLS
+    # =========================================================================
+    {
+        "item_id": "Q13",
+        "item_text": "When it's something you LIKE to do, you start:",
+        "response_options": {
+            "A": "Immediately",
+            "B": "Quickly",
+            "C": "Slowly",
+            "D": "With delay",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "ACTIVATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q14",
+        "item_text": "When it's something you do NOT want to do, you start:",
+        "response_options": {
+            "A": "With effort",
+            "B": "After a reminder",
+            "C": "At the last minute",
+            "D": "Not at all",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "ACTIVATION",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q15",
+        "item_text": "When you think of starting a hard task, you:",
+        "response_options": {
+            "A": "Break it into steps",
+            "B": "Pause, then begin",
+            "C": "Feel stuck",
+            "D": "Panic or avoid",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "ACTIVATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q16",
+        "item_text": "When you can't start a task, it's usually because:",
+        "response_options": {
+            "A": "You want help",
+            "B": "You want something more enjoyable",
+            "C": "You want to escape it",
+            "D": "You're overwhelmed inside",
+        },
+        "domain": "EXECUTIVE_FUNCTION_SKILLS",
+        "subdomain": "ACTIVATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 5: SUSTAINED_ATTENTION (Q17–Q20)
+    # Domain: COGNITIVE_CONTROL
+    # =========================================================================
+    {
+        "item_id": "Q17",
+        "item_text": "For tasks you enjoy, you stay focused:",
+        "response_options": {
+            "A": "The entire time",
+            "B": "Mostly",
+            "C": "Off and on",
+            "D": "Rarely",
+        },
+        "domain": "COGNITIVE_CONTROL",
+        "subdomain": "SUSTAINED_ATTENTION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q18",
+        "item_text": "For tasks you dislike, you stay focused:",
+        "response_options": {
+            "A": "With effort",
+            "B": "Briefly",
+            "C": "With frequent breaks",
+            "D": "I cannot stay focused",
+        },
+        "domain": "COGNITIVE_CONTROL",
+        "subdomain": "SUSTAINED_ATTENTION",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q19",
+        "item_text": "When you get distracted, you:",
+        "response_options": {
+            "A": "Redirect yourself",
+            "B": "Refocus after a moment",
+            "C": "Lose track",
+            "D": "Spiral into the Black Hole Abyss",
+        },
+        "domain": "COGNITIVE_CONTROL",
+        "subdomain": "SUSTAINED_ATTENTION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q20",
+        "item_text": "When you lose focus, it's usually because:",
+        "response_options": {
+            "A": "You want redirect/help",
+            "B": "You want fun or stimulation",
+            "C": "You want to escape the task",
+            "D": "You're overloaded internally",
+        },
+        "domain": "COGNITIVE_CONTROL",
+        "subdomain": "SUSTAINED_ATTENTION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 6: TASK_COMPLETION (Q21–Q24)
+    # Domain: BEHAVIORAL_PATTERNS
+    # =========================================================================
+    {
+        "item_id": "Q21",
+        "item_text": "You finish tasks you enjoy:",
+        "response_options": {
+            "A": "Early",
+            "B": "On time",
+            "C": "With reminders",
+            "D": "Rarely",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "TASK_COMPLETION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q22",
+        "item_text": "You finish tasks you dislike:",
+        "response_options": {
+            "A": "With breaks",
+            "B": "After reminders",
+            "C": "At the last minute",
+            "D": "Not at all",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "TASK_COMPLETION",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q23",
+        "item_text": "When you're close to finishing a task, you:",
+        "response_options": {
+            "A": "Push through",
+            "B": "Slow down",
+            "C": "Lose momentum",
+            "D": "Stop completely",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "TASK_COMPLETION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q24",
+        "item_text": "When you don't finish tasks, it's usually because:",
+        "response_options": {
+            "A": "You want help",
+            "B": "You pick something fun instead",
+            "C": "The final steps feel hard",
+            "D": "You're emotionally drained",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "TASK_COMPLETION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 7: RESPONSE_ACTIVATION (Q25–Q28)
+    # Domain: BEHAVIORAL_PATTERNS
+    # =========================================================================
+    {
+        "item_id": "Q25",
+        "item_text": "For preferred tasks, you respond:",
+        "response_options": {
+            "A": "Immediately",
+            "B": "Quickly",
+            "C": "With delay",
+            "D": "After a long pause",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "RESPONSE_ACTIVATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q26",
+        "item_text": "For NON-preferred tasks, you respond:",
+        "response_options": {
+            "A": "With effort",
+            "B": "After delay",
+            "C": "After prompts",
+            "D": "Not at all",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "RESPONSE_ACTIVATION",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q27",
+        "item_text": "When someone asks you to work, you:",
+        "response_options": {
+            "A": "Begin right away",
+            "B": "Need a moment",
+            "C": "Pause for a long time",
+            "D": "Freeze",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "RESPONSE_ACTIVATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q28",
+        "item_text": "When you're slow to respond, it's usually because:",
+        "response_options": {
+            "A": "You want support",
+            "B": "You're thinking of something else",
+            "C": "You want to delay or escape",
+            "D": "You feel frozen inside",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "RESPONSE_ACTIVATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 8: EMOTIONAL_REGULATION (Q29–Q32)
+    # Domain: EMOTIONAL_REGULATION
+    # =========================================================================
+    {
+        "item_id": "Q29",
+        "item_text": "When you're doing something you enjoy, your emotions are:",
+        "response_options": {
+            "A": "Calm",
+            "B": "Mostly calm",
+            "C": "Up and down",
+            "D": "Easily overwhelmed",
+        },
+        "domain": "EMOTIONAL_REGULATION",
+        "subdomain": "EMOTIONAL_REGULATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q30",
+        "item_text": "When you're doing something you do NOT enjoy, your emotions are:",
+        "response_options": {
+            "A": "Calm with effort",
+            "B": "Mostly calm",
+            "C": "Up and down",
+            "D": "Easily overwhelmed",
+        },
+        "domain": "EMOTIONAL_REGULATION",
+        "subdomain": "EMOTIONAL_REGULATION",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q31",
+        "item_text": "When you get frustrated with work, you usually:",
+        "response_options": {
+            "A": "Take a breath and keep going",
+            "B": "Try again after a moment",
+            "C": "Lose focus",
+            "D": "Shut down or withdraw",
+        },
+        "domain": "EMOTIONAL_REGULATION",
+        "subdomain": "EMOTIONAL_REGULATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q32",
+        "item_text": "When regulation is hard for you, it's usually because:",
+        "response_options": {
+            "A": "You need guidance",
+            "B": "You want to do something enjoyable",
+            "C": "You want to escape the task",
+            "D": "You're overwhelmed inside",
+        },
+        "domain": "EMOTIONAL_REGULATION",
+        "subdomain": "EMOTIONAL_REGULATION",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 9: HELP_SEEKING (Q33–Q36)
+    # Domain: BEHAVIORAL_PATTERNS
+    # =========================================================================
+    {
+        "item_id": "Q33",
+        "item_text": "When you enjoy the task, you ask for help:",
+        "response_options": {
+            "A": "Easily",
+            "B": "If needed",
+            "C": "Only when stuck",
+            "D": "Rarely or not at all",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "HELP_SEEKING",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q34",
+        "item_text": "When you do NOT enjoy the task, you ask for help:",
+        "response_options": {
+            "A": "Easily",
+            "B": "If needed",
+            "C": "Only when stuck",
+            "D": "Rarely or not at all",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "HELP_SEEKING",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q35",
+        "item_text": "When you're confused, you usually:",
+        "response_options": {
+            "A": "Ask for help",
+            "B": "Try a bit, then ask",
+            "C": "Try a long time before asking",
+            "D": "Avoid asking",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "HELP_SEEKING",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q36",
+        "item_text": "When you don't ask for help, it's usually because:",
+        "response_options": {
+            "A": "You want someone to notice",
+            "B": "You think you can figure it out",
+            "C": "You don't want to bother anyone",
+            "D": "You're overwhelmed inside",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "HELP_SEEKING",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 10: SOCIAL_ENGAGEMENT (Q37–Q40)
+    # Domain: ENVIRONMENTAL_DEMANDS
+    # =========================================================================
+    {
+        "item_id": "Q37",
+        "item_text": "When interacting with peers, you:",
+        "response_options": {
+            "A": "Engage easily",
+            "B": "Engage if comfortable",
+            "C": "Wait for others to talk first",
+            "D": "Avoid interaction",
+        },
+        "domain": "ENVIRONMENTAL_DEMANDS",
+        "subdomain": "SOCIAL_ENGAGEMENT",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q38",
+        "item_text": "When the task is in a group, you:",
+        "response_options": {
+            "A": "Participate actively",
+            "B": "Participate if asked",
+            "C": "Contribute very little",
+            "D": "Withdraw",
+        },
+        "domain": "ENVIRONMENTAL_DEMANDS",
+        "subdomain": "SOCIAL_ENGAGEMENT",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q39",
+        "item_text": "When social situations get overwhelming, you:",
+        "response_options": {
+            "A": "Stay engaged",
+            "B": "Step back for a moment",
+            "C": "Avoid talking",
+            "D": "Shut down",
+        },
+        "domain": "ENVIRONMENTAL_DEMANDS",
+        "subdomain": "SOCIAL_ENGAGEMENT",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q40",
+        "item_text": "When you step back or avoid social interaction, it's usually because:",
+        "response_options": {
+            "A": "You want guidance",
+            "B": "You need a break",
+            "C": "You don't know what to say",
+            "D": "You're overwhelmed inside",
+        },
+        "domain": "ENVIRONMENTAL_DEMANDS",
+        "subdomain": "SOCIAL_ENGAGEMENT",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 11: SELF_ADVOCACY (Q41–Q44)
+    # Domain: BEHAVIORAL_PATTERNS
+    # =========================================================================
+    {
+        "item_id": "Q41",
+        "item_text": "When it's something you enjoy, you speak up for yourself:",
+        "response_options": {
+            "A": "Easily",
+            "B": "With some effort",
+            "C": "Only if pushed",
+            "D": "Rarely",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "SELF_ADVOCACY",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q42",
+        "item_text": "When it's something you do NOT enjoy, you speak up for yourself:",
+        "response_options": {
+            "A": "Easily",
+            "B": "With some effort",
+            "C": "Only if pushed",
+            "D": "Rarely",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "SELF_ADVOCACY",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q43",
+        "item_text": "When you really need support, you:",
+        "response_options": {
+            "A": "Ask right away",
+            "B": "Ask after trying first",
+            "C": "Wait a long time before asking",
+            "D": "Avoid asking",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "SELF_ADVOCACY",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q44",
+        "item_text": "When you don't speak up for yourself, it's usually because:",
+        "response_options": {
+            "A": "You want guidance",
+            "B": "You're thinking of something else",
+            "C": "You don't want to bother anyone",
+            "D": "You're overwhelmed inside",
+        },
+        "domain": "BEHAVIORAL_PATTERNS",
+        "subdomain": "SELF_ADVOCACY",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 12: FOLLOW_THROUGH (Q45–Q48)
+    # Domain: MOTIVATIONAL_SYSTEMS
+    # =========================================================================
+    {
+        "item_id": "Q45",
+        "item_text": "When it's something you enjoy, you usually follow through:",
+        "response_options": {
+            "A": "Easily",
+            "B": "With effort",
+            "C": "Only when reminded",
+            "D": "Rarely",
+        },
+        "domain": "MOTIVATIONAL_SYSTEMS",
+        "subdomain": "FOLLOW_THROUGH",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q46",
+        "item_text": "When it's something you do NOT enjoy, you usually follow through:",
+        "response_options": {
+            "A": "With reminders",
+            "B": "With effort",
+            "C": "Only when pressured",
+            "D": "Rarely",
+        },
+        "domain": "MOTIVATIONAL_SYSTEMS",
+        "subdomain": "FOLLOW_THROUGH",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q47",
+        "item_text": "When someone asks you to finish a task, you:",
+        "response_options": {
+            "A": "Finish it",
+            "B": "Finish it after a reminder",
+            "C": "Do it only if necessary",
+            "D": "Avoid it",
+        },
+        "domain": "MOTIVATIONAL_SYSTEMS",
+        "subdomain": "FOLLOW_THROUGH",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q48",
+        "item_text": "When you don't follow through, it's usually because:",
+        "response_options": {
+            "A": "You want help",
+            "B": "You get distracted by something enjoyable",
+            "C": "The task feels too hard",
+            "D": "You're overwhelmed inside",
+        },
+        "domain": "MOTIVATIONAL_SYSTEMS",
+        "subdomain": "FOLLOW_THROUGH",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+    # =========================================================================
+    # SUBDOMAIN 13: SHUTDOWN_RESPONSE (Q49–Q52)
+    # Domain: INTERNAL_STATE_FACTORS
+    # =========================================================================
+    {
+        "item_id": "Q49",
+        "item_text": "Even when the task is easy, you shut down:",
+        "response_options": {
+            "A": "Rarely",
+            "B": "Sometimes",
+            "C": "Often",
+            "D": "Very often",
+        },
+        "domain": "INTERNAL_STATE_FACTORS",
+        "subdomain": "SHUTDOWN_RESPONSE",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "preferred",
+    },
+    {
+        "item_id": "Q50",
+        "item_text": "When the task is hard, you shut down:",
+        "response_options": {
+            "A": "Rarely",
+            "B": "Sometimes",
+            "C": "Often",
+            "D": "Very often",
+        },
+        "domain": "INTERNAL_STATE_FACTORS",
+        "subdomain": "SHUTDOWN_RESPONSE",
+        "construct": "PEI",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "non_preferred",
+    },
+    {
+        "item_id": "Q51",
+        "item_text": "When you feel overwhelmed, you:",
+        "response_options": {
+            "A": "Keep going",
+            "B": "Take a moment, then try again",
+            "C": "Avoid the task",
+            "D": "Shut down",
+        },
+        "domain": "INTERNAL_STATE_FACTORS",
+        "subdomain": "SHUTDOWN_RESPONSE",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "behavioral",
+        "context": "coping",
+    },
+    {
+        "item_id": "Q52",
+        "item_text": "When you fall into the 'Black Hole Abyss,' it's usually because:",
+        "response_options": {
+            "A": "You want help or reassurance",
+            "B": "You get distracted by something enjoyable",
+            "C": "The task feels too hard or confusing",
+            "D": "You're overwhelmed inside",
+        },
+        "domain": "INTERNAL_STATE_FACTORS",
+        "subdomain": "SHUTDOWN_RESPONSE",
+        "construct": "BHP",
+        "direction": "forward",
+        "weight": 1.0,
+        "response_scale": "ABCD_4",
+        "min_score": 1,
+        "max_score": 4,
+        "item_type": "aims",
+        "context": "function",
+    },
+]
+
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+def get_item_by_id(item_id: str) -> dict | None:
+    """Retrieve a single item definition by its item_id."""
+    for item in ITEM_DICTIONARY:
+        if item["item_id"] == item_id:
+            return item
+    return None
+
+
+def get_items_by_domain(domain: str) -> list[dict]:
+    """Retrieve all items belonging to a specific domain."""
+    return [item for item in ITEM_DICTIONARY if item["domain"] == domain]
+
+
+def get_items_by_construct(construct: str) -> list[dict]:
+    """Retrieve all items classified under a specific construct (PEI or BHP)."""
+    return [item for item in ITEM_DICTIONARY if item["construct"] == construct]
+
+
+def get_behavioral_items() -> list[dict]:
+    """Return only behavioral (scored) items, excluding AIMS function items."""
+    return [item for item in ITEM_DICTIONARY if item["item_type"] == "behavioral"]
+
+
+def get_aims_items() -> list[dict]:
+    """Return only AIMS function items (every 4th question)."""
+    return [item for item in ITEM_DICTIONARY if item["item_type"] == "aims"]
+
+
+def get_items_by_subdomain(subdomain: str) -> list[dict]:
+    """Retrieve all items belonging to a specific subdomain."""
+    return [item for item in ITEM_DICTIONARY if item["subdomain"] == subdomain]
+
+
+def convert_letter_to_numeric(letter: str) -> int:
+    """Convert A/B/C/D letter response to numeric 4/3/2/1."""
+    return ABCD_NUMERIC_MAP.get(letter.upper(), 0)
