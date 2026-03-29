@@ -149,15 +149,15 @@ def build_output(
 # =============================================================================
 
 SCORECARD_DOMAIN_GROUPS = {
-    "Executive Function Skills": [
+    "Executive Skills & Behavior": [
         "EXECUTIVE_FUNCTION_SKILLS",
         "BEHAVIORAL_PATTERNS",
     ],
-    "Cognitive Control": [
+    "Cognitive & Motivational Systems": [
         "COGNITIVE_CONTROL",
         "MOTIVATIONAL_SYSTEMS",
     ],
-    "Emotional Regulation": [
+    "Emotional & Internal State": [
         "EMOTIONAL_REGULATION",
         "INTERNAL_STATE_FACTORS",
     ],

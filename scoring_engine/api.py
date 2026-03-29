@@ -255,6 +255,65 @@ def create_app(use_database: bool = False) -> FastAPI:
         return {"success": True, "questions": questions}
 
     # -----------------------------------------------------------------
+    # Authentication Endpoints
+    # -----------------------------------------------------------------
+
+    @app.post("/api/v1/auth/signup")
+    def signup(request: dict):
+        """Create a new user account."""
+        from scoring_engine.auth_service import create_user
+        
+        email = request.get('email')
+        password = request.get('password')
+        name = request.get('name')
+        demographics = request.get('demographics')
+        
+        if not email or not password:
+            raise HTTPException(status_code=400, detail="Email and password are required")
+        
+        if len(password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        
+        user = create_user(email, password, name, demographics)
+        
+        if not user:
+            raise HTTPException(status_code=400, detail="User already exists or creation failed")
+        
+        logger.info(f"New user signed up: {email}")
+        return {"success": True, "user": user}
+
+    @app.post("/api/v1/auth/login")
+    def login(request: dict):
+        """Authenticate a user and return session token."""
+        from scoring_engine.auth_service import authenticate_user
+        
+        email = request.get('email')
+        password = request.get('password')
+        
+        if not email or not password:
+            raise HTTPException(status_code=400, detail="Email and password are required")
+        
+        user = authenticate_user(email, password)
+        
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+        
+        logger.info(f"User logged in: {email}")
+        return {"success": True, "user": user}
+
+    @app.get("/api/v1/auth/user/{email}")
+    def get_user(email: str):
+        """Get user information by email."""
+        from scoring_engine.auth_service import get_user_by_email
+        
+        user = get_user_by_email(email)
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        return {"success": True, "user": user}
+
+    # -----------------------------------------------------------------
     # Payment Endpoints (Phase 2)
     # -----------------------------------------------------------------
 
@@ -292,21 +351,34 @@ def create_app(use_database: bool = False) -> FastAPI:
         payload = await request.body()
         signature = request.headers.get("stripe-signature", "")
         
+        logger.info("Received Stripe webhook")
+        
         # Verify signature
         if not verify_webhook_signature(payload, signature):
+            logger.error("Webhook signature verification failed")
             raise HTTPException(status_code=400, detail="Invalid signature")
+        
+        logger.info("Webhook signature verified")
         
         # Parse event
         import json
         event_data = json.loads(payload)
+        event_type = event_data.get('type', 'unknown')
+        logger.info(f"Processing webhook event type: {event_type}")
         
         # Process payment
         result = process_payment_webhook(event_data)
         
         if result:
+            logger.info(f"Payment processed successfully: {result}")
             # Unlock report
-            unlock_report(result['assessment_id'], result['payment_id'])
-            logger.info(f"Report unlocked for assessment {result['assessment_id']}")
+            unlock_success = unlock_report(result['assessment_id'], result['payment_id'])
+            if unlock_success:
+                logger.info(f"✓ Report successfully unlocked for assessment {result['assessment_id']}")
+            else:
+                logger.error(f"✗ Failed to unlock report for assessment {result['assessment_id']}")
+        else:
+            logger.warning(f"No result from process_payment_webhook for event type: {event_type}")
         
         return {"success": True}
 
@@ -318,48 +390,185 @@ def create_app(use_database: bool = False) -> FastAPI:
         status = get_payment_status(assessment_id)
         return {"success": True, "payment_status": status}
 
+    @app.post("/api/v1/admin/mark-paid/{assessment_id}")
+    def admin_mark_paid(assessment_id: str, payment_id: str = "manual_admin_override"):
+        """Admin endpoint to manually mark a report as paid."""
+        from scoring_engine.payment_service import unlock_report
+        
+        logger.info(f"Admin manually marking assessment {assessment_id} as paid")
+        success = unlock_report(assessment_id, payment_id)
+        
+        if success:
+            return {
+                "success": True, 
+                "message": f"Assessment {assessment_id} marked as paid",
+                "assessment_id": assessment_id,
+                "payment_id": payment_id
+            }
+        else:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to mark assessment {assessment_id} as paid"
+            )
+
+    @app.post("/api/v1/convert-to-scorecard")
+    def convert_to_scorecard(full_result: dict):
+        """Convert a full result to scorecard format."""
+        try:
+            from scoring_engine.output import build_scorecard_output
+            scorecard_data = build_scorecard_output(full_result)
+            return {"success": True, "data": scorecard_data}
+        except Exception as e:
+            logger.error(f"Failed to convert to scorecard: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Conversion failed: {str(e)}")
+
+    @app.get("/api/v1/user/{user_email}/reports")
+    def get_user_reports(user_email: str):
+        """Get all reports for a user (both free and paid)."""
+        if not db_available:
+            # Fallback to memory store
+            user_reports = []
+            for result_id, result_data in memory_store.items():
+                metadata = result_data.get('metadata', {})
+                if metadata.get('user_email') == user_email or metadata.get('user_id') == user_email:
+                    user_reports.append({
+                        'id': result_id,
+                        'report_type': metadata.get('report_type', 'STUDENT_SUCCESS'),
+                        'archetype_id': result_data.get('archetype', {}).get('archetype_id'),
+                        'created_at': metadata.get('timestamp'),
+                        'payment_status': 'free',  # Memory store doesn't track payments
+                    })
+            return {"success": True, "reports": user_reports}
+        
+        try:
+            from scoring_engine.database import get_results_by_user
+            from scoring_engine.supabase_client import get_supabase_client
+            
+            # Get user_id from email (since database stores by user_id which is email)
+            reports = get_results_by_user(user_email)
+            
+            # Enrich with payment status
+            supabase = get_supabase_client()
+            enriched_reports = []
+            for report in reports:
+                # Fetch payment status
+                payment_result = supabase.table('assessment_results')\
+                    .select('payment_status, user_id')\
+                    .eq('id', report['id'])\
+                    .maybe_single()\
+                    .execute()
+                
+                payment_status = 'free'
+                if payment_result.data:
+                    payment_status = payment_result.data.get('payment_status', 'free')
+                
+                enriched_reports.append({
+                    **report,
+                    'payment_status': payment_status
+                })
+            
+            return {"success": True, "reports": enriched_reports}
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch user reports: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Failed to fetch reports: {str(e)}")
+
     # -----------------------------------------------------------------
-    # PDF Export Endpoint (Phase 2)
+    # PDF Export Endpoints (Phase 2)
     # -----------------------------------------------------------------
 
-    @app.get("/api/v1/export/pdf/{result_id}")
-    def export_pdf(result_id: str):
-        """Generate and download PDF report for an assessment."""
-        from fastapi.responses import Response
-        from scoring_engine.pdf_service import generate_pdf_report
-        
-        # Retrieve assessment result
+    def _fetch_result(result_id: str) -> dict:
+        """Fetch assessment result from database or memory store."""
         result_data = None
         
         if db_available:
             try:
+                logger.info(f"Attempting database lookup for result_id: {result_id}")
                 from scoring_engine.database import get_result_by_id
                 result_data = get_result_by_id(result_id)
+                if result_data:
+                    logger.info(f"Result found in database for result_id: {result_id}")
+                else:
+                    logger.warning(f"Result not found in database for result_id: {result_id}")
             except Exception as e:
-                logger.error(f"Database lookup failed: {e}")
-        
-        # Fallback to memory store
-        if not result_data and result_id in memory_store:
-            result_data = memory_store[result_id]
+                logger.error(f"Database lookup failed for result_id {result_id}: {e}", exc_info=True)
         
         if not result_data:
-            raise HTTPException(status_code=404, detail=f"Result '{result_id}' not found")
+            logger.info(f"Checking memory store for result_id: {result_id}")
+            logger.debug(f"Memory store keys: {list(memory_store.keys())}")
+            if result_id in memory_store:
+                result_data = memory_store[result_id]
+                logger.info(f"Result found in memory store for result_id: {result_id}")
+            else:
+                logger.warning(f"Result not found in memory store for result_id: {result_id}")
         
-        # Generate PDF
-        pdf_bytes = generate_pdf_report(result_data)
+        if not result_data:
+            logger.error(f"Result '{result_id}' not found in database or memory store")
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Result '{result_id}' not found. Available keys: {list(memory_store.keys())[:5]}"
+            )
+        
+        return result_data
+
+    @app.get("/api/v1/export/scorecard-pdf/{result_id}")
+    def export_scorecard_pdf(result_id: str):
+        """Generate and download FREE ScoreCard PDF (matches web ScoreCard view)."""
+        from fastapi.responses import Response
+        from scoring_engine.pdf_service import generate_scorecard_pdf
+        
+        logger.info(f"ScoreCard PDF export requested for result_id: {result_id}")
+        result_data = _fetch_result(result_id)
+        
+        logger.info(f"Generating ScoreCard PDF for result_id: {result_id}")
+        try:
+            pdf_bytes = generate_scorecard_pdf(result_data)
+            if pdf_bytes:
+                logger.info(f"ScoreCard PDF generated: {len(pdf_bytes)} bytes")
+            else:
+                logger.error(f"ScoreCard PDF generation returned None for result_id: {result_id}")
+        except Exception as e:
+            logger.error(f"ScoreCard PDF generation failed for {result_id}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"ScoreCard PDF generation error: {str(e)}")
         
         if not pdf_bytes:
-            raise HTTPException(status_code=500, detail="Failed to generate PDF")
+            raise HTTPException(status_code=500, detail="Failed to generate ScoreCard PDF")
         
-        # Return PDF as downloadable file
-        filename = f"BEST_Galaxy_Report_{result_id[:8]}.pdf"
-        
+        filename = f"BEST_Galaxy_ScoreCard_{result_id[:8]}.pdf"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={
-                "Content-Disposition": f"attachment; filename={filename}"
-            }
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    @app.get("/api/v1/export/pdf/{result_id}")
+    def export_pdf(result_id: str):
+        """Generate and download Full Report PDF (paid tier)."""
+        from fastapi.responses import Response
+        from scoring_engine.pdf_service import generate_pdf_report
+        
+        logger.info(f"Full Report PDF export requested for result_id: {result_id}")
+        result_data = _fetch_result(result_id)
+        
+        logger.info(f"Generating Full Report PDF for result_id: {result_id}, report_type: {result_data.get('metadata', {}).get('report_type')}")
+        try:
+            pdf_bytes = generate_pdf_report(result_data)
+            if pdf_bytes:
+                logger.info(f"Full Report PDF generated: {len(pdf_bytes)} bytes")
+            else:
+                logger.error(f"Full Report PDF generation returned None for result_id: {result_id}")
+        except Exception as e:
+            logger.error(f"Full Report PDF generation failed for {result_id}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"PDF generation error: {str(e)}")
+        
+        if not pdf_bytes:
+            raise HTTPException(status_code=500, detail="Failed to generate PDF - no bytes returned")
+        
+        filename = f"BEST_Galaxy_Report_{result_id[:8]}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
     return app

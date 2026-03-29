@@ -5,6 +5,9 @@ import DemographicForm from './components/DemographicForm';
 import PaymentSuccess from './components/PaymentSuccess';
 import Login from './components/Login';
 import Signup from './components/Signup';
+import MyReports from './components/MyReports';
+import FullReport from './components/FullReport';
+import axios from 'axios';
 
 function App() {
   const [currentView, setCurrentView] = useState('welcome');
@@ -53,8 +56,9 @@ function App() {
 
   const handleSignup = (userData) => {
     setUser(userData);
+    setDemographics(userData.demographics);
     localStorage.setItem('best_galaxy_current_user', JSON.stringify(userData));
-    setCurrentView('demographics');
+    setCurrentView('assessment');
   };
 
   const handleLogout = () => {
@@ -71,7 +75,9 @@ function App() {
       setCurrentView('login');
       return;
     }
-    setCurrentView('demographics');
+    // Use demographics from user profile (collected during signup)
+    setDemographics(user.demographics || { source: 'web_frontend' });
+    setCurrentView('assessment');
   };
 
   const handleDemographicsComplete = (demoData) => {
@@ -129,6 +135,48 @@ function App() {
     setCurrentView('welcome');
   };
 
+  const handleViewReports = () => {
+    setCurrentView('my-reports');
+  };
+
+  const handleViewReport = async (reportId, paymentStatus) => {
+    try {
+      const response = await axios.get(`/api/v1/results/${reportId}`);
+      if (response.data.success) {
+        let reportData = response.data.data;
+        
+        // If it's a free report, we need to transform full result to scorecard format
+        if (paymentStatus === 'free') {
+          // Check if data is already in scorecard format (has 'constellation' field)
+          if (!reportData.constellation) {
+            // Data is in full format, need to convert to scorecard format
+            // Call the backend to get scorecard version
+            try {
+              const scorecardResponse = await axios.post('/api/v1/convert-to-scorecard', reportData);
+              if (scorecardResponse.data.success) {
+                reportData = scorecardResponse.data.data;
+              }
+            } catch (conversionErr) {
+              console.error('Failed to convert to scorecard format:', conversionErr);
+              // Fallback: use full data anyway, ScoreCard component might handle it
+            }
+          }
+        }
+        
+        setAssessmentData(reportData);
+        setAssessmentId(reportId);
+        if (paymentStatus === 'paid') {
+          setCurrentView('full-report');
+        } else {
+          setCurrentView('results');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load report:', err);
+      alert('Failed to load report. Please try again.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {currentView === 'login' && (
@@ -154,12 +202,20 @@ function App() {
                   <p className="text-sm text-gray-500">Welcome back,</p>
                   <p className="text-lg font-semibold text-indigo-900">{user.name || user.email}</p>
                 </div>
-                <button
-                  onClick={handleLogout}
-                  className="text-sm text-gray-600 hover:text-gray-800 font-medium transition-colors"
-                >
-                  Logout
-                </button>
+                <div className="flex gap-4">
+                  <button
+                    onClick={handleViewReports}
+                    className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold transition-colors"
+                  >
+                    📊 My Reports
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="text-sm text-gray-600 hover:text-gray-800 font-medium transition-colors"
+                  >
+                    Logout
+                  </button>
+                </div>
               </div>
             )}
             <div className="text-center">
@@ -248,6 +304,22 @@ function App() {
 
       {currentView === 'payment-success' && (
         <PaymentSuccess onRestart={handleRestart} />
+      )}
+
+      {currentView === 'my-reports' && (
+        <MyReports 
+          userEmail={user?.email}
+          onViewReport={handleViewReport}
+          onBack={() => setCurrentView('welcome')}
+        />
+      )}
+
+      {currentView === 'full-report' && (
+        <FullReport 
+          data={assessmentData}
+          onRestart={handleRestart}
+          assessmentId={assessmentId}
+        />
       )}
     </div>
   );

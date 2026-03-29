@@ -184,28 +184,35 @@ def unlock_report(assessment_id: str, payment_id: str) -> bool:
     """
     try:
         from scoring_engine.supabase_client import get_supabase_client
+        from datetime import datetime, timezone
         
         supabase = get_supabase_client()
         if not supabase:
             logger.error("Supabase not available - cannot unlock report")
             return False
         
+        logger.info(f"Attempting to unlock report for assessment_id: {assessment_id}")
+        
         # Update assessment record
         result = supabase.table('assessment_results').update({
             'payment_status': 'paid',
             'payment_id': payment_id,
-            'upgraded_at': 'now()'
+            'upgraded_at': datetime.now(timezone.utc).isoformat()
         }).eq('id', assessment_id).execute()
         
+        logger.info(f"Update result: {result}")
+        
         if result.data:
-            logger.info(f"Unlocked report for assessment {assessment_id}")
+            logger.info(f"Successfully unlocked report for assessment {assessment_id}, payment_id: {payment_id}")
+            logger.info(f"Updated records: {len(result.data)}")
             return True
         else:
-            logger.error(f"Failed to unlock report for assessment {assessment_id}")
+            logger.error(f"Failed to unlock report for assessment {assessment_id} - no data returned")
+            logger.error(f"Result object: {result}")
             return False
             
     except Exception as e:
-        logger.error(f"Error unlocking report: {e}")
+        logger.error(f"Error unlocking report for {assessment_id}: {e}", exc_info=True)
         return False
 
 

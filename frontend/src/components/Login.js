@@ -1,45 +1,55 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 
 const Login = ({ onLogin, onSwitchToSignup }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
     // Validate email
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError('Please enter a valid email address');
+      setLoading(false);
       return;
     }
 
     if (password.length < 6) {
       setError('Password must be at least 6 characters');
+      setLoading(false);
       return;
     }
 
-    // Check if user exists in localStorage
-    const users = JSON.parse(localStorage.getItem('best_galaxy_users') || '{}');
-    const user = users[email];
+    try {
+      // Call backend authentication API
+      const response = await axios.post('/api/v1/auth/login', {
+        email,
+        password
+      });
 
-    if (!user) {
-      setError('No account found with this email. Please sign up.');
-      return;
+      if (response.data.success) {
+        // Login successful
+        onLogin(response.data.user);
+      } else {
+        setError('Login failed. Please try again.');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      if (err.response?.status === 401) {
+        setError('Invalid email or password');
+      } else if (err.response?.data?.detail) {
+        setError(err.response.data.detail);
+      } else {
+        setError('Login failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
-
-    if (user.password !== password) {
-      setError('Incorrect password');
-      return;
-    }
-
-    // Login successful
-    onLogin({
-      email: user.email,
-      name: user.name || email.split('@')[0],
-      demographics: user.demographics || {}
-    });
   };
 
   return (
@@ -92,9 +102,10 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
 
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg hover:shadow-xl"
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Log In
+            {loading ? 'Logging in...' : 'Log In'}
           </button>
         </form>
 

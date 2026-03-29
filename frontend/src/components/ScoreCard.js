@@ -3,6 +3,8 @@ import LockedSections from './LockedSections';
 
 const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
   const [upgradingFromLens, setUpgradingFromLens] = React.useState(false);
+  const [downloadingPdf, setDownloadingPdf] = React.useState(false);
+  const [pdfError, setPdfError] = React.useState(null);
 
   if (!data) {
     return (
@@ -22,6 +24,61 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
     locked_features,
     metadata,
   } = data;
+
+  const handleDownloadPdf = async () => {
+    if (!assessmentId) {
+      setPdfError('No assessment ID available');
+      console.error('PDF Download Error: No assessment ID');
+      return;
+    }
+
+    setDownloadingPdf(true);
+    setPdfError(null);
+    console.log('Starting PDF download for assessment ID:', assessmentId);
+
+    try {
+      const axios = (await import('axios')).default;
+      console.log('Requesting PDF from:', `/api/v1/export/scorecard-pdf/${assessmentId}`);
+      
+      const response = await axios.get(`/api/v1/export/scorecard-pdf/${assessmentId}`, {
+        responseType: 'blob',
+        timeout: 30000, // 30 second timeout
+      });
+
+      console.log('PDF response received, size:', response.data.size, 'bytes');
+      console.log('Response headers:', response.headers);
+
+      // Create blob and download
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `BEST_Galaxy_ScoreCard_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      console.log('PDF download initiated successfully');
+      setDownloadingPdf(false);
+    } catch (err) {
+      console.error('PDF Download Error:', err);
+      console.error('Error response:', err.response);
+      console.error('Error message:', err.message);
+      
+      let errorMessage = 'Failed to download PDF';
+      if (err.response) {
+        errorMessage = `Server error (${err.response.status}): ${err.response.data?.detail || err.response.statusText}`;
+      } else if (err.request) {
+        errorMessage = 'No response from server. Please check your connection.';
+      } else {
+        errorMessage = err.message;
+      }
+      
+      setPdfError(errorMessage);
+      setDownloadingPdf(false);
+    }
+  };
 
   const handleLensUpgrade = async () => {
     if (!assessmentId) {
@@ -190,6 +247,40 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
           assessmentId={assessmentId}
           userEmail={userEmail || metadata?.user_id}
         />
+
+        {/* ── DOWNLOAD FREE SCORECARD PDF ── */}
+        <div className="bg-white rounded-2xl shadow-md p-6 text-center">
+          <h3 className="text-lg font-bold text-gray-800 mb-3">
+            📄 Download Your Free ScoreCard
+          </h3>
+          <p className="text-gray-600 text-sm mb-4">
+            Save your executive function profile as a PDF for your records.
+          </p>
+          
+          {pdfError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <p className="font-semibold mb-1">Download Failed</p>
+              <p>{pdfError}</p>
+              <p className="text-xs mt-2 text-red-600">
+                Check browser console (F12) for detailed error logs.
+              </p>
+            </div>
+          )}
+          
+          <button
+            onClick={handleDownloadPdf}
+            disabled={downloadingPdf || !assessmentId}
+            className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {downloadingPdf ? '⏳ Generating PDF...' : 'Download Free ScoreCard PDF'}
+          </button>
+          
+          {!assessmentId && (
+            <p className="text-xs text-red-600 mt-2">
+              Assessment ID missing - cannot download PDF
+            </p>
+          )}
+        </div>
 
         {/* ── FOOTER ── */}
         <div className="text-center pt-4 pb-8">
