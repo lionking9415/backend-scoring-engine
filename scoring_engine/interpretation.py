@@ -498,6 +498,8 @@ def generate_full_interpretation(output_json: dict) -> dict:
     top_strengths = output_json["summary"]["top_strengths"]
     growth_edges = output_json["summary"]["growth_edges"]
 
+    archetype = output_json.get("archetype", {}).get("archetype_id", "")
+
     return {
         "executive_summary": generate_executive_summary(
             quadrant, load_state, top_strengths, growth_edges, report_type
@@ -508,7 +510,28 @@ def generate_full_interpretation(output_json: dict) -> dict:
         "growth_edges_analysis": generate_growth_edges_narrative(growth_edges, domain_profiles),
         "pei_bhp_interpretation": generate_construct_narrative(construct_scores),
         "aims_plan": generate_aims_plan(domain_profiles),
+        "cosmic_summary": generate_cosmic_summary(archetype, top_strengths, growth_edges),
     }
+
+
+def generate_cosmic_summary(archetype: str, top_strengths: list[str],
+                            growth_edges: list[str]) -> str:
+    """
+    Generate an inspiring closing Cosmic Summary that ties together
+    the individual's archetype, strengths, and growth trajectory.
+    """
+    archetype_label = _display_domain(archetype) if archetype else "your unique profile"
+    strengths_str = " and ".join(_display_domain(s) for s in top_strengths[:2]) if top_strengths else "your core capacities"
+    edges_str = " and ".join(_display_domain(e) for e in growth_edges[:2]) if growth_edges else "emerging areas"
+
+    return (
+        f"As a {archetype_label}, your executive function galaxy is uniquely yours — "
+        f"shaped by the gravitational pull of {strengths_str} and the expanding frontier of {edges_str}. "
+        f"Every constellation in your galaxy tells a story of how you navigate the world, "
+        f"and the brightest stars are already lighting the way forward. "
+        f"Growth is not about fixing what is broken; it is about aligning what already shines "
+        f"with what is ready to emerge. Your galaxy is expanding — and the best is yet to come."
+    )
 
 
 # =============================================================================

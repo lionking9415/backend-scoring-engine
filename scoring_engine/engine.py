@@ -58,6 +58,8 @@ def process_assessment(
     demographics: dict | None = None,
     threshold: float | None = None,
     include_interpretation: bool = True,
+    use_ai: bool = False,
+    user_email: str | None = None,
 ) -> dict:
     """
     Process a complete assessment from raw responses to final output.
@@ -70,6 +72,7 @@ def process_assessment(
         demographics: Optional demographic metadata (does not affect scoring)
         threshold: Custom quadrant threshold (defaults to config)
         include_interpretation: Whether to generate AI narrative layer
+        use_ai: Whether to use OpenAI for interpretation (Phase 2)
 
     Returns:
         Complete output JSON per Section 6 schema, optionally with
@@ -179,6 +182,7 @@ def process_assessment(
         completion_rate=completion_rate,
         low_confidence=low_confidence,
         demographics=demographics,
+        user_email=user_email,
     )
 
     # -------------------------------------------------------------------------
@@ -195,7 +199,13 @@ def process_assessment(
     # Step 10: Generate AI interpretation (Section 7)
     # -------------------------------------------------------------------------
     if include_interpretation:
-        interpretation = generate_full_interpretation(output)
+        if use_ai:
+            # Phase 2: Use OpenAI for interpretation
+            from scoring_engine.ai_service import generate_full_ai_interpretation
+            interpretation = generate_full_ai_interpretation(output)
+        else:
+            # Phase 1: Use template-based interpretation
+            interpretation = generate_full_interpretation(output)
         output["interpretation"] = interpretation
 
     logger.info(

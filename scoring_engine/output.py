@@ -32,6 +32,7 @@ def build_output(
     completion_rate: float,
     low_confidence: bool,
     demographics: dict | None = None,
+    user_email: str | None = None,
 ) -> dict:
     """
     Section 6.3: Build the complete Master Output JSON.
@@ -126,6 +127,9 @@ def build_output(
         "items": rounded_items,
     }
 
+    if user_email is not None:
+        output["metadata"]["user_email"] = user_email
+    
     if demographics is not None:
         output["metadata"]["demographics"] = demographics
 

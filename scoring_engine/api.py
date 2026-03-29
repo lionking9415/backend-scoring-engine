@@ -12,7 +12,7 @@ Endpoints:
 import logging
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -36,11 +36,13 @@ class ResponseItem(BaseModel):
 class AssessmentRequest(BaseModel):
     """Assessment submission payload."""
     user_id: str = Field(..., description="Unique user identifier")
+    user_email: Optional[str] = Field(None, description="User email address")
     report_type: str = Field(..., description="Report lens (e.g. STUDENT_SUCCESS)")
     responses: list[ResponseItem] = Field(..., min_length=1, description="Assessment responses")
     demographics: Optional[dict] = Field(None, description="Optional demographic metadata")
     include_interpretation: bool = Field(True, description="Include AI narrative layer")
     tier: str = Field("free", description="Output tier: 'free' (ScoreCard) or 'paid' (Full Report)")
+    use_ai: bool = Field(False, description="Use OpenAI for interpretation (Phase 2)")
 
 
 class AssessmentResponse(BaseModel):
@@ -151,6 +153,8 @@ def create_app(use_database: bool = False) -> FastAPI:
                 responses=responses,
                 demographics=request.demographics,
                 include_interpretation=request.include_interpretation,
+                use_ai=request.use_ai,
+                user_email=request.user_email,
             )
         except ValidationError as e:
             raise HTTPException(status_code=422, detail=str(e))
@@ -249,6 +253,114 @@ def create_app(use_database: bool = False) -> FastAPI:
             for item in ITEM_DICTIONARY
         ]
         return {"success": True, "questions": questions}
+
+    # -----------------------------------------------------------------
+    # Payment Endpoints (Phase 2)
+    # -----------------------------------------------------------------
+
+    @app.post("/api/v1/payment/create-checkout")
+    def create_checkout(
+        assessment_id: str,
+        customer_email: str,
+        success_url: str = "http://localhost:3000/success",
+        cancel_url: str = "http://localhost:3000/cancel"
+    ):
+        """Create Stripe checkout session for report unlock."""
+        from scoring_engine.payment_service import create_checkout_session
+        
+        session = create_checkout_session(
+            assessment_id=assessment_id,
+            customer_email=customer_email,
+            success_url=success_url,
+            cancel_url=cancel_url
+        )
+        
+        if not session:
+            raise HTTPException(status_code=500, detail="Failed to create checkout session")
+        
+        return {"success": True, "session": session}
+
+    @app.post("/api/v1/payment/webhook")
+    async def payment_webhook(request: Request):
+        """Handle Stripe webhook events."""
+        from scoring_engine.payment_service import (
+            verify_webhook_signature,
+            process_payment_webhook,
+            unlock_report
+        )
+        
+        payload = await request.body()
+        signature = request.headers.get("stripe-signature", "")
+        
+        # Verify signature
+        if not verify_webhook_signature(payload, signature):
+            raise HTTPException(status_code=400, detail="Invalid signature")
+        
+        # Parse event
+        import json
+        event_data = json.loads(payload)
+        
+        # Process payment
+        result = process_payment_webhook(event_data)
+        
+        if result:
+            # Unlock report
+            unlock_report(result['assessment_id'], result['payment_id'])
+            logger.info(f"Report unlocked for assessment {result['assessment_id']}")
+        
+        return {"success": True}
+
+    @app.get("/api/v1/payment/status/{assessment_id}")
+    def get_payment_status_endpoint(assessment_id: str):
+        """Get payment status for an assessment."""
+        from scoring_engine.payment_service import get_payment_status
+        
+        status = get_payment_status(assessment_id)
+        return {"success": True, "payment_status": status}
+
+    # -----------------------------------------------------------------
+    # PDF Export Endpoint (Phase 2)
+    # -----------------------------------------------------------------
+
+    @app.get("/api/v1/export/pdf/{result_id}")
+    def export_pdf(result_id: str):
+        """Generate and download PDF report for an assessment."""
+        from fastapi.responses import Response
+        from scoring_engine.pdf_service import generate_pdf_report
+        
+        # Retrieve assessment result
+        result_data = None
+        
+        if db_available:
+            try:
+                from scoring_engine.database import get_result_by_id
+                result_data = get_result_by_id(result_id)
+            except Exception as e:
+                logger.error(f"Database lookup failed: {e}")
+        
+        # Fallback to memory store
+        if not result_data and result_id in memory_store:
+            result_data = memory_store[result_id]
+        
+        if not result_data:
+            raise HTTPException(status_code=404, detail=f"Result '{result_id}' not found")
+        
+        # Generate PDF
+        pdf_bytes = generate_pdf_report(result_data)
+        
+        if not pdf_bytes:
+            raise HTTPException(status_code=500, detail="Failed to generate PDF")
+        
+        # Return PDF as downloadable file
+        filename = f"BEST_Galaxy_Report_{result_id[:8]}.pdf"
+        
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
 
     return app
 

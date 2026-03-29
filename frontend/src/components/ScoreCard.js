@@ -1,7 +1,9 @@
 import React from 'react';
 import LockedSections from './LockedSections';
 
-const ScoreCard = ({ data, onRestart }) => {
+const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
+  const [upgradingFromLens, setUpgradingFromLens] = React.useState(false);
+
   if (!data) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -18,7 +20,46 @@ const ScoreCard = ({ data, onRestart }) => {
     growth_edges,
     lens_teasers,
     locked_features,
+    metadata,
   } = data;
+
+  const handleLensUpgrade = async () => {
+    if (!assessmentId) {
+      alert('No assessment ID available');
+      return;
+    }
+
+    if (!userEmail) {
+      alert('Please log in to unlock the full report');
+      return;
+    }
+
+    setUpgradingFromLens(true);
+
+    try {
+      const axios = (await import('axios')).default;
+      const response = await axios.post('/api/v1/payment/create-checkout', null, {
+        params: {
+          assessment_id: assessmentId,
+          customer_email: userEmail,
+          success_url: `${window.location.origin}/success?assessment_id=${assessmentId}`,
+          cancel_url: window.location.href
+        }
+      });
+
+      if (response.data.success && response.data.session) {
+        if (response.data.session.checkout_url) {
+          window.location.href = response.data.session.checkout_url;
+        } else if (response.data.session.error) {
+          alert(response.data.session.error);
+          setUpgradingFromLens(false);
+        }
+      }
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to create checkout session');
+      setUpgradingFromLens(false);
+    }
+  };
 
   const getLoadColor = (status) => {
     if (status === 'Balanced') return 'text-green-600 bg-green-50 border-green-200';
@@ -120,6 +161,7 @@ const ScoreCard = ({ data, onRestart }) => {
           <h2 className="text-xl font-bold text-gray-800 mb-5">
             Your Profile Across 4 Lenses
           </h2>
+
           <div className="space-y-5">
             {lens_teasers && Object.entries(lens_teasers).map(([key, lens]) => (
               <div key={key} className="border border-gray-200 rounded-xl p-5">
@@ -130,8 +172,12 @@ const ScoreCard = ({ data, onRestart }) => {
                 <p className="text-gray-600 leading-relaxed mb-3">
                   {lens.teaser}
                 </p>
-                <button className="text-indigo-600 hover:text-indigo-800 text-sm font-semibold transition-colors">
-                  🔒 Unlock Full Report →
+                <button 
+                  onClick={handleLensUpgrade}
+                  disabled={upgradingFromLens}
+                  className="text-indigo-600 hover:text-indigo-800 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {upgradingFromLens ? '⏳ Processing...' : '🔒 Unlock Full Report →'}
                 </button>
               </div>
             ))}
@@ -139,7 +185,11 @@ const ScoreCard = ({ data, onRestart }) => {
         </div>
 
         {/* ── 6. LOCKED SECTIONS ── */}
-        <LockedSections features={locked_features} />
+        <LockedSections 
+          features={locked_features} 
+          assessmentId={assessmentId}
+          userEmail={userEmail || metadata?.user_id}
+        />
 
         {/* ── FOOTER ── */}
         <div className="text-center pt-4 pb-8">

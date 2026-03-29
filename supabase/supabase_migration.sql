@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS assessment_results (
     demographics JSONB,
     raw_responses JSONB NOT NULL,
     full_output JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Phase 2: Payment tracking
+    payment_status TEXT NOT NULL DEFAULT 'free',  -- 'free' or 'paid'
+    payment_id TEXT,  -- Stripe payment intent ID
+    upgraded_at TIMESTAMPTZ  -- When user upgraded to paid
 );
 
 -- Indexes for common queries
@@ -35,6 +39,9 @@ CREATE INDEX IF NOT EXISTS idx_assessment_results_report_type
 
 CREATE INDEX IF NOT EXISTS idx_assessment_results_quadrant
     ON assessment_results (quadrant);
+
+CREATE INDEX IF NOT EXISTS idx_assessment_results_payment_status
+    ON assessment_results (payment_status);
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE assessment_results ENABLE ROW LEVEL SECURITY;
