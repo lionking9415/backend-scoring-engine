@@ -19,6 +19,20 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+def _get_user_name(user_id: str) -> str:
+    """Fetch user name from users table, fallback to email."""
+    try:
+        from scoring_engine.supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        if supabase:
+            result = supabase.table('users').select('name, email').eq('email', user_id).maybe_single().execute()
+            if result.data:
+                return result.data.get('name') or result.data.get('email', user_id)
+    except Exception as e:
+        logger.debug(f"Could not fetch user name: {e}")
+    return user_id
+
+
 def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
     """
     Generate a FREE ScoreCard PDF that matches the web ScoreCard view exactly.
@@ -43,7 +57,7 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         from reportlab.lib.units import inch
         from reportlab.platypus import (
             SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-            PageBreak
+            PageBreak, HRFlowable
         )
         from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
         from scoring_engine.output import build_scorecard_output
@@ -109,31 +123,38 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         if tagline:
             elements.append(Paragraph(f'"{tagline}"', subtitle_style))
         
-        # Report info
-        user_display = metadata.get('user_email') or metadata.get('user_id', 'N/A')
-        if len(user_display) > 40:
-            user_display = user_display[:37] + '...'
+        # Report info - fetch user name
+        user_id = metadata.get('user_email') or metadata.get('user_id', 'N/A')
+        user_name = _get_user_name(user_id)
+        if len(user_name) > 40:
+            user_name = user_name[:37] + '...'
+        
         timestamp = metadata.get('timestamp', datetime.now().isoformat())
         try:
-            date_str = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).strftime('%B %d, %Y')
+            date_str = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).strftime('%B %d, %Y at %I:%M %p')
         except Exception:
             date_str = timestamp[:10]
         
+        # Professional header box
+        elements.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#4F46E5'), spaceAfter=12))
         info_data = [
-            ['User:', user_display],
-            ['Generated:', date_str],
+            ['Prepared for:', user_name],
+            ['Report Date:', date_str],
+            ['Report Type:', 'Free ScoreCard'],
         ]
-        info_table = Table(info_data, colWidths=[1.5 * inch, 4.5 * inch])
+        info_table = Table(info_data, colWidths=[1.8 * inch, 4.2 * inch])
         info_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
             ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#6B7280')),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#312E81')),
+            ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#1F2937')),
             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
         ]))
         elements.append(info_table)
-        elements.append(Spacer(1, 0.2 * inch))
+        elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#E5E7EB'), spaceAfter=16))
         
         # ── 2. EXECUTIVE FUNCTION CONSTELLATION (4 grouped domains) ──
         elements.append(Paragraph("Your Executive Function Constellation", heading_style))
@@ -283,7 +304,7 @@ def generate_pdf_report(assessment_data: dict) -> Optional[bytes]:
         from reportlab.lib.units import inch
         from reportlab.platypus import (
             SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-            PageBreak, Image
+            PageBreak, Image, HRFlowable
         )
         from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
         
@@ -346,31 +367,39 @@ def generate_pdf_report(assessment_data: dict) -> Optional[bytes]:
         elements.append(Paragraph(archetype.get('description', ''), body_style))
         elements.append(Spacer(1, 0.2*inch))
         
-        # Report Info
+        # Report Info - fetch user name
         report_type = metadata.get('report_type', '').replace('_', ' ').title()
         timestamp = metadata.get('timestamp', datetime.now().isoformat())
-        date_str = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).strftime('%B %d, %Y')
+        date_str = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).strftime('%B %d, %Y at %I:%M %p')
         
-        # Use user_email if available, otherwise fall back to user_id
-        user_display = metadata.get('user_email') or metadata.get('user_id', 'N/A')
-        if len(user_display) > 40:
-            user_display = user_display[:37] + '...'
+        # Fetch user name from users table
+        user_id = metadata.get('user_email') or metadata.get('user_id', 'N/A')
+        user_name = _get_user_name(user_id)
+        if len(user_name) > 40:
+            user_name = user_name[:37] + '...'
+        
+        # Professional header with divider
+        elements.append(HRFlowable(width="100%", thickness=3, color=colors.HexColor('#4F46E5'), spaceAfter=16))
         
         info_data = [
+            ['Prepared for:', user_name],
+            ['Report Date:', date_str],
             ['Report Type:', report_type],
-            ['Generated:', date_str],
-            ['User:', user_display]
+            ['Assessment Type:', 'Full Galaxy Report (Paid)'],
         ]
         info_table = Table(info_data, colWidths=[2*inch, 4*inch])
         info_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#6B7280')),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
+            ('FONTNAME', (1,0), (1,-1), 'Helvetica'),
+            ('FONTSIZE', (0,0), (-1,-1), 11),
+            ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor('#312E81')),
+            ('TEXTCOLOR', (1,0), (1,-1), colors.HexColor('#1F2937')),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
         ]))
         elements.append(info_table)
+        elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#E5E7EB'), spaceAfter=20))
         elements.append(PageBreak())
         
         # Executive Summary
