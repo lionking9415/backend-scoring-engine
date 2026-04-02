@@ -123,6 +123,17 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         if tagline:
             elements.append(Paragraph(f'"{tagline}"', subtitle_style))
         
+        # Framework Reference Line (Item 5)
+        framework_ref_style = ParagraphStyle(
+            'FrameworkRef', parent=styles['Normal'],
+            fontSize=9, textColor=colors.HexColor('#6366F1'),
+            spaceAfter=16, alignment=TA_CENTER, fontName='Helvetica-Oblique'
+        )
+        elements.append(Paragraph(
+            'This profile reflects how your internal capacity (BHP) is interacting with your environmental demands (PEI).',
+            framework_ref_style
+        ))
+        
         # Report info - fetch user name
         user_id = metadata.get('user_email') or metadata.get('user_id', 'N/A')
         user_name = _get_user_name(user_id)
@@ -156,34 +167,58 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         elements.append(info_table)
         elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#E5E7EB'), spaceAfter=16))
         
+        # Domain color + tag mapping (Items 1 & 2)
+        DOMAIN_META = {
+            'Executive Skills & Behavior':      {'tag': 'Action & Follow-Through',  'color': '#3B82F6'},
+            'Cognitive & Motivational Systems': {'tag': 'Focus & Drive',            'color': '#8B5CF6'},
+            'Emotional & Internal State':       {'tag': 'Emotional Regulation',     'color': '#F59E0B'},
+            'Environmental Demands':            {'tag': 'Life Load',                'color': '#EF4444'},
+        }
+        
         # ── 2. EXECUTIVE FUNCTION CONSTELLATION (4 grouped domains) ──
         elements.append(Paragraph("Your Executive Function Constellation", heading_style))
         
-        constellation_data = [['Domain Group', 'Score', 'Percentage']]
+        constellation_data = [['Domain Group', 'Tag', 'Score', 'Percentage']]
+        row_colors_map = []  # track domain colors per row
         for group in constellation:
             pct = group.get('percentage', 0)
+            meta = DOMAIN_META.get(group['name'], {'tag': '', 'color': '#6B7280'})
+            is_env = group['name'] == 'Environmental Demands'
+            display_name = 'Life Load' if is_env else group['name']
+            display_tag = 'Higher = More Pressure' if is_env else meta['tag']
+            display_pct = f"{pct}% ({'High Pressure' if pct >= 80 else 'Moderate Pressure' if pct >= 60 else pct})" if is_env else f"{pct}%"
             constellation_data.append([
-                group['name'],
+                display_name,
+                display_tag,
                 f"{group['score']:.3f}",
-                f"{pct}%"
+                display_pct
             ])
+            row_colors_map.append(meta['color'])
         
-        const_table = Table(constellation_data, colWidths=[3 * inch, 1.5 * inch, 1.5 * inch])
-        const_table.setStyle(TableStyle([
+        const_table = Table(constellation_data, colWidths=[2.2 * inch, 1.6 * inch, 1.1 * inch, 1.1 * inch])
+        table_style_cmds = [
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4F46E5')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+            ('ALIGN', (1, 1), (1, -1), 'LEFT'),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#D1D5DB')),
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F3F4F6')]),
-            ('LEFTPADDING', (0, 0), (-1, -1), 10),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-        ]))
+            ('FONTSIZE', (1, 1), (1, -1), 9),
+            ('TEXTCOLOR', (1, 1), (1, -1), colors.HexColor('#6B7280')),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ]
+        # Apply domain colors to each row
+        for i, dc in enumerate(row_colors_map):
+            row_idx = i + 1
+            table_style_cmds.append(('TEXTCOLOR', (0, row_idx), (0, row_idx), colors.HexColor(dc)))
+            table_style_cmds.append(('FONTNAME', (0, row_idx), (0, row_idx), 'Helvetica-Bold'))
+        const_table.setStyle(TableStyle(table_style_cmds))
         elements.append(const_table)
         elements.append(Spacer(1, 0.2 * inch))
         
@@ -191,30 +226,74 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         elements.append(Paragraph("Load Balance", heading_style))
         load_status = load_balance.get('status', 'Unknown')
         load_msg = load_balance.get('message', '')
+        executive_summary = load_balance.get('executive_summary', '')
+        pei_score = load_balance.get('pei_score', 0)
+        bhp_score = load_balance.get('bhp_score', 0)
+        
+        # Dynamic load label — aligned with backend load_state thresholds
+        if pei_score and bhp_score:
+            diff = bhp_score - pei_score  # BHP - PEI (positive = capacity surplus)
+            if diff >= 0.20:
+                dynamic_label = 'Surplus Capacity'
+            elif diff >= 0.05:
+                dynamic_label = 'Stable Capacity'
+            elif diff >= -0.04:
+                dynamic_label = 'Balanced Load'
+            elif diff >= -0.19:
+                dynamic_label = 'Emerging Strain'
+            else:
+                dynamic_label = 'Critical Overload'
+        elif 'Balanced' in load_status and 'Imbalanced' not in load_status:
+            dynamic_label = 'Balanced Load'
+        elif 'Slightly' in load_status:
+            dynamic_label = 'Emerging Strain'
+        elif 'High' in load_status:
+            dynamic_label = 'Critical Overload'
+        else:
+            dynamic_label = 'Emerging Strain'
         
         # Color-code load status
-        if 'Balanced' in load_status and 'Imbalanced' not in load_status:
+        if dynamic_label in ('Surplus Capacity', 'Stable Capacity'):
             status_color = '#10B981'
-        elif 'Slightly' in load_status:
+        elif dynamic_label == 'Balanced Load':
+            status_color = '#3B82F6'
+        elif dynamic_label == 'Emerging Strain':
             status_color = '#F59E0B'
         else:
             status_color = '#EF4444'
         
         elements.append(Paragraph(
-            f'<font color="{status_color}"><b>{load_status}</b></font>',
+            f'<font color="{status_color}"><b>{dynamic_label}</b></font>',
             ParagraphStyle('LoadStatus', parent=body_style, fontSize=14, alignment=TA_LEFT)
         ))
+        
+        # Note: BHP/PEI numeric scores are hidden in Free ScoreCard (visual bars only)
+        # Numeric values are only shown in paid Full Report PDF
+        
         if load_msg:
             elements.append(Paragraph(load_msg, body_style))
+        
+        # AI-Generated Executive Summary (Item 4)
+        if executive_summary:
+            elements.append(Spacer(1, 0.1 * inch))
+            summary_style = ParagraphStyle(
+                'ExecSummary', parent=body_style, fontSize=10,
+                textColor=colors.HexColor('#374151'), leading=15,
+                borderColor=colors.HexColor('#E5E7EB'), borderWidth=1,
+                borderPadding=8, backColor=colors.HexColor('#F9FAFB')
+            )
+            elements.append(Paragraph(executive_summary, summary_style))
         elements.append(Spacer(1, 0.15 * inch))
         
         # ── 4. STRENGTHS & GROWTH EDGES ──
+        # Filter Environmental Demands from strengths (it's pressure, not capacity)
+        filtered_strengths = [s for s in strengths if 'Environmental' not in s and 'ENVIRONMENTAL' not in s]
         elements.append(Paragraph("Summary", heading_style))
         
         summary_data = [['Top Strengths', 'Growth Edges']]
-        max_len = max(len(strengths), len(growth_edges), 1)
+        max_len = max(len(filtered_strengths), len(growth_edges), 1)
         for i in range(max_len):
-            s = strengths[i] if i < len(strengths) else ''
+            s = filtered_strengths[i] if i < len(filtered_strengths) else ''
             g = growth_edges[i] if i < len(growth_edges) else ''
             summary_data.append([s, g])
         
@@ -268,10 +347,18 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
             "BEST Executive Function Galaxy Assessment™ | Free ScoreCard | Confidential",
             footer_style
         ))
+        # AIMS Teaser (Item 7)
         elements.append(Paragraph(
-            "Unlock the Full Galaxy Report for detailed domain analysis, AIMS plan, and AI narrative.",
-            ParagraphStyle('UpgradeNote', parent=footer_style,
-                         fontSize=9, textColor=colors.HexColor('#6366F1'))
+            "Your full report includes your personalized AIMS for the BEST\u2122 intervention pathway.",
+            ParagraphStyle('AimsTeaser', parent=footer_style,
+                         fontSize=9, textColor=colors.HexColor('#4F46E5'), fontName='Helvetica-Bold')
+        ))
+        elements.append(Spacer(1, 0.1 * inch))
+        # Updated CTA (Item 6)
+        elements.append(Paragraph(
+            "You've seen the surface. Now see the system.",
+            ParagraphStyle('CTALine', parent=footer_style,
+                         fontSize=10, textColor=colors.HexColor('#6366F1'), fontName='Helvetica-Oblique')
         ))
         
         # Build PDF
@@ -455,9 +542,10 @@ def generate_pdf_report(assessment_data: dict) -> Optional[bytes]:
             elements.append(Spacer(1, 0.2*inch))
         
         # Summary (Strengths & Growth Edges)
+        # Filter Environmental Demands from strengths (it's pressure, not capacity)
         elements.append(Paragraph("Summary", heading_style))
         
-        strengths = summary.get('top_strengths', [])
+        strengths = [s for s in summary.get('top_strengths', []) if s != 'ENVIRONMENTAL_DEMANDS']
         growth_edges = summary.get('growth_edges', [])
         
         summary_data = [['Top Strengths', 'Growth Edges']]
@@ -487,11 +575,14 @@ def generate_pdf_report(assessment_data: dict) -> Optional[bytes]:
         elements.append(summary_table)
         elements.append(PageBreak())
         
-        # Domain Profiles
-        elements.append(Paragraph("Domain Profiles", heading_style))
+        # Domain Profiles — Internal Capacity Domains
+        elements.append(Paragraph("Domain Profiles — Internal Capacity", heading_style))
+        
+        capacity_domains = [d for d in domains if d['name'] != 'ENVIRONMENTAL_DEMANDS']
+        env_domains = [d for d in domains if d['name'] == 'ENVIRONMENTAL_DEMANDS']
         
         domain_data = [['Domain', 'Score', 'Classification', 'Rank']]
-        for domain in domains:
+        for domain in capacity_domains:
             domain_data.append([
                 domain['name'].replace('_', ' '),
                 f"{domain['score']:.3f}",
@@ -516,43 +607,106 @@ def generate_pdf_report(assessment_data: dict) -> Optional[bytes]:
             ('RIGHTPADDING', (0, 0), (-1, -1), 8),
         ]))
         elements.append(domain_table)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Environmental Demands — Separated as External Pressure
+        if env_domains:
+            elements.append(Paragraph("Environmental Demands — External Pressure", heading_style))
+            env_note_style = ParagraphStyle('EnvNote', parent=body_style, fontSize=10,
+                                            textColor=colors.HexColor('#DC2626'), leading=14)
+            elements.append(Paragraph(
+                "Environmental Demands represents external pressure on your system, not internal capacity. "
+                "A high score indicates high load/strain, not high performance.",
+                env_note_style
+            ))
+            env_data = [['Domain', 'Score', 'Load Level', 'Rank']]
+            for domain in env_domains:
+                score = domain['score']
+                load_level = 'High Load' if score >= 0.8 else 'Elevated Pressure' if score >= 0.6 else 'Moderate Load'
+                env_data.append([
+                    domain['name'].replace('_', ' '),
+                    f"{score:.3f}",
+                    load_level,
+                    f"#{domain['rank']}"
+                ])
+            env_table = Table(env_data, colWidths=[2.5*inch, 1.2*inch, 1.5*inch, 0.8*inch])
+            env_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#DC2626')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 11),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#FCA5A5')),
+                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, -1), 9),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#FEF2F2')),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ]))
+            elements.append(env_table)
         elements.append(PageBreak())
         
         # Interpretation Sections
         if interpretation:
             elements.append(Paragraph("Detailed Interpretation", heading_style))
             
+            sub_heading_style = ParagraphStyle('SubHeading',
+                                             parent=styles['Heading3'],
+                                             fontSize=13,
+                                             textColor=colors.HexColor('#4B5563'),
+                                             spaceAfter=8,
+                                             spaceBefore=12,
+                                             fontName='Helvetica-Bold')
+            
             sections = [
                 ('Quadrant Analysis', 'quadrant_interpretation'),
                 ('Load State Analysis', 'load_interpretation'),
                 ('Strengths Analysis', 'strengths_analysis'),
-                ('Growth Edges Analysis', 'growth_edges_analysis'),
             ]
             
             for section_title, section_key in sections:
                 if interpretation.get(section_key):
-                    elements.append(Paragraph(section_title, 
-                                            ParagraphStyle('SubHeading',
-                                                         parent=styles['Heading3'],
-                                                         fontSize=13,
-                                                         textColor=colors.HexColor('#4B5563'),
-                                                         spaceAfter=8,
-                                                         spaceBefore=12,
-                                                         fontName='Helvetica-Bold')))
+                    elements.append(Paragraph(section_title, sub_heading_style))
                     elements.append(Paragraph(interpretation[section_key], body_style))
                     elements.append(Spacer(1, 0.15*inch))
+            
+            # Load & Pressure Analysis — separated from Strengths
+            if pei_score >= 0.6:
+                elements.append(Paragraph('Load &amp; Pressure Analysis', sub_heading_style))
+                elements.append(Paragraph(
+                    'Your system is currently operating under high environmental load, meaning that '
+                    'external demands are placing sustained pressure on your internal capacity. This '
+                    'level of demand is not a reflection of strength, but rather the intensity of what '
+                    'your system is being required to manage. When environmental load is elevated, even '
+                    'strong internal skills can become strained over time. Adjusting, reducing, or '
+                    'restructuring these external demands will be an important part of restoring balance '
+                    'and supporting long-term performance.',
+                    body_style
+                ))
+                elements.append(Spacer(1, 0.15*inch))
+            
+            # Growth Edges Analysis
+            if interpretation.get('growth_edges_analysis'):
+                elements.append(Paragraph('Growth Edges Analysis', sub_heading_style))
+                elements.append(Paragraph(interpretation['growth_edges_analysis'], body_style))
+                elements.append(Spacer(1, 0.15*inch))
         
-        # AIMS Plan
+        # AIMS Plan — enforced order: Awareness → Intervention → Mastery → Sustain
         if interpretation and interpretation.get('aims_plan'):
             elements.append(PageBreak())
             elements.append(Paragraph("AIMS for the BEST™ Plan", heading_style))
             
             aims_plan = interpretation['aims_plan']
-            for phase, content in aims_plan.items():
-                phase_title = phase.replace('_', ' ').title()
-                elements.append(Paragraph(f"<b>{phase_title}</b>", body_style))
-                elements.append(Paragraph(content, body_style))
-                elements.append(Spacer(1, 0.1*inch))
+            aims_order = ['awareness', 'intervention', 'mastery', 'sustain']
+            for phase in aims_order:
+                content = aims_plan.get(phase, '')
+                if content:
+                    phase_title = phase.replace('_', ' ').title()
+                    elements.append(Paragraph(f"<b>{phase_title}</b>", body_style))
+                    elements.append(Paragraph(content, body_style))
+                    elements.append(Spacer(1, 0.1*inch))
         
         # Cosmic Summary
         if interpretation and interpretation.get('cosmic_summary'):

@@ -192,7 +192,7 @@ def build_scorecard_output(full_output: dict) -> dict:
     Includes:
       1. Galaxy Snapshot Header (archetype name + tagline)
       2. EF Constellation (4 core domain groups)
-      3. Load Balance Snapshot (simple status)
+      3. Load Balance Snapshot (simple status + AI-generated executive summary)
       4. Top 2 Strengths + Top 2 Growth Edges
       5. Four Lens Teaser Paragraphs
       6. Locked feature list
@@ -213,8 +213,19 @@ def build_scorecard_output(full_output: dict) -> dict:
     # 2. EF Constellation (4 core groups)
     constellation = _group_domain_scores(domain_profiles)
 
-    # 3. Load Balance Snapshot
+    # 3. Load Balance Snapshot with AI-generated executive summary
     load_status = get_load_balance_status(load_balance)
+    
+    # Generate AI-powered executive summary for load balance
+    try:
+        from scoring_engine.ai_service import generate_load_balance_summary
+        load_executive_summary = generate_load_balance_summary(full_output)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to generate AI load balance summary: {e}")
+        # Fallback to static message
+        load_executive_summary = "Your environment and internal capacity are interacting in important ways..."
 
     # 4. Top 2 strengths + Top 2 growth edges (names only)
     display_strengths = [s.replace("_", " ").title() for s in top_strengths[:2]]
@@ -258,6 +269,9 @@ def build_scorecard_output(full_output: dict) -> dict:
         "load_balance": {
             "status": load_status,
             "message": "Your environment and internal capacity are interacting in important ways...",
+            "executive_summary": load_executive_summary,
+            "pei_score": full_output["load_framework"].get("pei_score", 0),
+            "bhp_score": full_output["load_framework"].get("bhp_score", 0),
         },
         "strengths": display_strengths,
         "growth_edges": display_edges,

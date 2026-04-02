@@ -86,10 +86,12 @@ def extract_strengths(domain_profiles: list[dict],
     """
     Section 5.5 / 5.8: Extract top strength domains.
     Returns domain names of the top N highest-scoring domains.
+    Excludes ENVIRONMENTAL_DEMANDS (external pressure, not internal capacity).
     """
     if count is None:
         count = TOP_STRENGTHS_COUNT
-    return [p["name"] for p in domain_profiles[:count]]
+    capacity_profiles = [p for p in domain_profiles if p["name"] != "ENVIRONMENTAL_DEMANDS"]
+    return [p["name"] for p in capacity_profiles[:count]]
 
 
 def extract_growth_edges(domain_profiles: list[dict],

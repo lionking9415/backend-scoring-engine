@@ -179,114 +179,50 @@ LOAD_STATE_NARRATIVES = {
 # Purpose: Create emotional resonance + curiosity without explanation.
 # =============================================================================
 
+# New AIMS-integrated lens teaser copy (universal, not quadrant-specific)
 LENS_TEASER_TEMPLATES = {
-    "Q1_Aligned_Flow": {
-        "PERSONAL_LIFESTYLE": (
-            "You show moments of clarity and intention in your daily life, especially "
-            "when your environment supports your natural rhythm. There is a deeper pattern "
-            "in how your internal energy and external expectations interact\u2014one that reveals "
-            "where your greatest stability can be built."
-        ),
-        "STUDENT_SUCCESS": (
-            "Your learning patterns suggest that you are capable of strong engagement "
-            "when the material aligns with your processing style. Your full profile reveals "
-            "how your brain responds to academic demand\u2014and how to optimize it."
-        ),
-        "PROFESSIONAL_LEADERSHIP": (
-            "In professional environments, you bring a unique way of thinking, organizing, "
-            "and responding to expectations. There is a deeper leadership pattern within your "
-            "results that highlights how you operate under pressure\u2014and where your highest "
-            "performance can emerge."
-        ),
-        "FAMILY_ECOSYSTEM": (
-            "Within your family or relational environment, your executive functioning interacts "
-            "dynamically with others\u2019 needs, emotions, and expectations. Your full profile "
-            "uncovers how these interactions shape your behavior\u2014and how to create more balance "
-            "within your ecosystem."
-        ),
-    },
-    "Q2_Capacity_Strain": {
-        "PERSONAL_LIFESTYLE": (
-            "You show real capacity in your daily life, but there are moments when the weight "
-            "of your environment begins to press against your internal resources. Your full "
-            "profile reveals the specific pattern of demand that is stretching your system\u2014and "
-            "what can be done about it."
-        ),
-        "STUDENT_SUCCESS": (
-            "Your academic abilities are real, but certain demands may place an invisible strain "
-            "on your executive functioning, especially in areas requiring sustained effort or "
-            "rapid organization. Your full profile reveals how your brain responds to academic "
-            "pressure\u2014and how to optimize it."
-        ),
-        "PROFESSIONAL_LEADERSHIP": (
-            "You excel in areas that align with your natural strengths, while other professional "
-            "demands create friction beneath the surface. There is a deeper pattern in your results "
-            "that shows where targeted adjustments can unlock your next level of performance."
-        ),
-        "FAMILY_ECOSYSTEM": (
-            "You may find yourself adapting, responding, or compensating in ways that impact your "
-            "consistency and energy within your family. Your full profile uncovers how these "
-            "interactions shape your behavior\u2014and how to create more balance within your ecosystem."
-        ),
-    },
-    "Q3_Overload": {
-        "PERSONAL_LIFESTYLE": (
-            "Your daily environment is asking more of you than your current system can comfortably "
-            "sustain. This is not about ability\u2014it is about the weight of demand on your capacity. "
-            "Your full profile reveals exactly where the pressure points are and what support looks like."
-        ),
-        "STUDENT_SUCCESS": (
-            "Your learning environment is placing demands that exceed what your executive functioning "
-            "can comfortably manage right now. This is not about intelligence\u2014your full profile "
-            "reveals the specific pressure points and how to address them."
-        ),
-        "PROFESSIONAL_LEADERSHIP": (
-            "Your professional environment is asking more of your system than it can currently sustain. "
-            "This is not a reflection of your competence\u2014your full profile shows the exact pattern "
-            "of overload and the path to restoring balance."
-        ),
-        "FAMILY_ECOSYSTEM": (
-            "Your family dynamics are placing significant demands on your executive functioning. "
-            "You may be compensating in ways you don\u2019t fully see yet. Your full profile reveals "
-            "how to create more sustainable patterns within your family ecosystem."
-        ),
-    },
-    "Q4_Underutilized": {
-        "PERSONAL_LIFESTYLE": (
-            "Your current patterns suggest untapped potential\u2014there is capacity within you that "
-            "hasn\u2019t been fully activated by your environment. Your full profile reveals what\u2019s "
-            "holding that potential in place and how to unlock it."
-        ),
-        "STUDENT_SUCCESS": (
-            "Your academic engagement may be operating below its natural potential. There are "
-            "signals in your results that suggest stronger capacity than what is currently being "
-            "activated. Your full profile reveals how to ignite that engagement."
-        ),
-        "PROFESSIONAL_LEADERSHIP": (
-            "Your professional profile suggests capacity that isn\u2019t being fully engaged by your "
-            "current environment. There is a pattern in your results pointing to untapped leadership "
-            "potential\u2014your full report reveals how to activate it."
-        ),
-        "FAMILY_ECOSYSTEM": (
-            "Within your family system, there may be an opportunity for deeper engagement that "
-            "hasn\u2019t yet been activated. Your full profile reveals how your executive functioning "
-            "can support richer, more balanced family dynamics."
-        ),
-    },
+    "PERSONAL_LIFESTYLE": (
+        "Understand how your executive functioning shows up in your daily life—from routines and "
+        "organization to energy, consistency, and self-management. This report reveals how your internal "
+        "capacity interacts with everyday demands and provides insight into how to create greater balance "
+        "and personal effectiveness.\n\n"
+        "Your personalized AIMS for the BEST™ Plan guides you through building awareness, implementing "
+        "targeted strategies, strengthening key skills, and sustaining long-term improvements in your daily functioning."
+    ),
+    "STUDENT_SUCCESS": (
+        "Explore how your executive functioning impacts learning, focus, organization, and academic performance. "
+        "This report highlights how your brain responds to academic demands and provides insight into how to "
+        "improve consistency, manage workload, and optimize performance in structured environments.\n\n"
+        "Your AIMS for the BEST™ Plan provides a clear pathway to increase focus, strengthen study behaviors, "
+        "and develop the executive skills needed for sustained academic success."
+    ),
+    "PROFESSIONAL_LEADERSHIP": (
+        "Discover how your executive functioning influences productivity, decision-making, leadership, and "
+        "performance under pressure. This report reveals how you manage professional demands and where strategic "
+        "adjustments can enhance efficiency, clarity, and long-term success.\n\n"
+        "Your AIMS for the BEST™ Plan delivers targeted strategies to improve execution, manage workload demands, "
+        "and strengthen leadership effectiveness in high-performance environments."
+    ),
+    "FAMILY_ECOSYSTEM": (
+        "Gain insight into how your executive functioning operates within your relationships and family environment. "
+        "This report highlights patterns of interaction, responsiveness, and consistency, and provides guidance on "
+        "how to create more balance and alignment within your ecosystem.\n\n"
+        "Your AIMS for the BEST™ Plan helps you apply practical strategies to improve communication, increase "
+        "consistency, and support healthier, more effective interactions within your family system."
+    ),
 }
 
 
 def generate_lens_teasers(quadrant: str) -> dict:
     """
     Generate all 4 lens teaser paragraphs for the FREE ScoreCard.
-    Returns dict with lens keys and teaser strings.
+    Now uses universal AIMS-integrated copy (not quadrant-specific).
     """
-    templates = LENS_TEASER_TEMPLATES.get(quadrant, LENS_TEASER_TEMPLATES["Q1_Aligned_Flow"])
     return {
-        "PERSONAL_LIFESTYLE": templates["PERSONAL_LIFESTYLE"],
-        "STUDENT_SUCCESS": templates["STUDENT_SUCCESS"],
-        "PROFESSIONAL_LEADERSHIP": templates["PROFESSIONAL_LEADERSHIP"],
-        "FAMILY_ECOSYSTEM": templates["FAMILY_ECOSYSTEM"],
+        "PERSONAL_LIFESTYLE": LENS_TEASER_TEMPLATES["PERSONAL_LIFESTYLE"],
+        "STUDENT_SUCCESS": LENS_TEASER_TEMPLATES["STUDENT_SUCCESS"],
+        "PROFESSIONAL_LEADERSHIP": LENS_TEASER_TEMPLATES["PROFESSIONAL_LEADERSHIP"],
+        "FAMILY_ECOSYSTEM": LENS_TEASER_TEMPLATES["FAMILY_ECOSYSTEM"],
     }
 
 
@@ -312,6 +248,7 @@ def generate_strengths_narrative(top_strengths: list[str],
                                  domain_profiles: list[dict]) -> str:
     """
     Section 7.7: Highlight top strengths and explain how they support EF.
+    Excludes ENVIRONMENTAL_DEMANDS (external pressure, not internal capacity).
     """
     if not top_strengths:
         return "No strength domains were identified in this assessment."
@@ -320,6 +257,8 @@ def generate_strengths_narrative(top_strengths: list[str],
     profile_lookup = {p["name"]: p for p in domain_profiles}
 
     for name in top_strengths:
+        if name == "ENVIRONMENTAL_DEMANDS":
+            continue
         profile = profile_lookup.get(name)
         if profile:
             score_pct = int(profile["score"] * 100)
@@ -413,34 +352,61 @@ def generate_aims_plan(domain_profiles: list[dict]) -> dict:
     """
     Section 7.10–7.11: AIMS for the BEST™ Intervention Mapping.
     Maps assessment results into the four AIMS phases.
+    Environmental Demands is excluded from Sustain (it represents external
+    pressure, not internal capacity) and is addressed in Awareness/Intervention.
+    Order: Awareness → Intervention → Mastery → Sustain.
     """
-    growth_domains = [p for p in domain_profiles if p["classification"] == "Growth_Edge"]
-    emerging_domains = [p for p in domain_profiles if p["classification"] == "Emerging"]
-    developed_domains = [p for p in domain_profiles if p["classification"] == "Developed"]
-    strength_domains = [p for p in domain_profiles if p["classification"] == "Strength"]
+    # Separate Environmental Demands from capacity domains
+    env_domains = [p for p in domain_profiles if p["name"] == "ENVIRONMENTAL_DEMANDS"]
+    capacity_profiles = [p for p in domain_profiles if p["name"] != "ENVIRONMENTAL_DEMANDS"]
+
+    growth_domains = [p for p in capacity_profiles if p["classification"] == "Growth_Edge"]
+    emerging_domains = [p for p in capacity_profiles if p["classification"] == "Emerging"]
+    developed_domains = [p for p in capacity_profiles if p["classification"] == "Developed"]
+    strength_domains = [p for p in capacity_profiles if p["classification"] == "Strength"]
 
     def _domain_list(profiles):
         return ", ".join(_display_domain(p["name"]) for p in profiles) if profiles else "none identified"
 
+    # Check if environmental load is high
+    env_score = env_domains[0]["score"] if env_domains else 0
+    env_note = ""
+    if env_score >= 0.7:
+        env_note = (
+            " Recognizing where external demands are placing pressure on your system "
+            "is the first step toward meaningful change and more effective self-regulation."
+        )
+
     awareness = (
-        f"Begin by building awareness of your executive functioning patterns. "
-        f"Your immediate priority areas are: {_domain_list(growth_domains)}. "
-        f"Recognition of these patterns is the first step toward meaningful change."
+        f"Begin by building awareness of how your internal capacity is interacting "
+        f"with your current level of environmental load."
+        f"{env_note}"
     )
+
+    env_intervention = ""
+    if env_score >= 0.7:
+        env_intervention = (
+            " In addition, adjustments to your environment may be necessary to reduce "
+            "excessive load and support your system more effectively."
+        )
 
     intervention = (
         f"Targeted skill-building is recommended for: {_domain_list(emerging_domains + growth_domains)}. "
-        f"These areas will benefit from structured practice and environmental adjustments."
+        f"These areas will benefit from structured practice to improve consistency "
+        f"and cognitive flexibility."
+        f"{env_intervention}"
     )
 
     mastery = (
         f"Continue strengthening and integrating skills in: {_domain_list(developed_domains)}. "
-        f"These domains are functional but can be optimized through consistent practice."
+        f"These domains are functional and can be further optimized through consistent practice, "
+        f"allowing your system to perform more efficiently under varying levels of demand."
     )
 
     sustain = (
         f"Sustain and generalize your strengths in: {_domain_list(strength_domains)}. "
-        f"These are your capacity anchors — use them to support growth in other areas."
+        f"These domains serve as stabilizing anchors for your system and can help "
+        f"maintain balance, especially when external pressures increase."
     )
 
     return {
@@ -455,13 +421,16 @@ def generate_executive_summary(quadrant: str, load_state: str,
                                top_strengths: list[str],
                                growth_edges: list[str],
                                report_type: str) -> str:
-    """Generate a concise executive summary combining key findings."""
+    """Generate a concise executive summary combining key findings.
+    Uses generic 'assessment results' language for broader applicability.
+    Excludes ENVIRONMENTAL_DEMANDS from strengths display."""
     quadrant_label = quadrant.replace("_", " ").replace("Q1 ", "").replace("Q2 ", "").replace("Q3 ", "").replace("Q4 ", "")
-    strengths_str = ", ".join(_display_domain(s) for s in top_strengths[:2]) if top_strengths else "none identified"
+    capacity_strengths = [s for s in top_strengths if s != "ENVIRONMENTAL_DEMANDS"]
+    strengths_str = ", ".join(_display_domain(s) for s in capacity_strengths[:2]) if capacity_strengths else "none identified"
     edges_str = ", ".join(_display_domain(e) for e in growth_edges[:2]) if growth_edges else "none identified"
 
     return (
-        f"Based on your {_display_report_type(report_type)} assessment, your executive functioning "
+        f"Based on your assessment results, your executive functioning "
         f"system is currently operating in a state of {quadrant_label} with a load classification "
         f"of {load_state.replace('_', ' ')}. "
         f"Your primary strengths are in {strengths_str}, while your key areas for growth "
@@ -519,18 +488,26 @@ def generate_cosmic_summary(archetype: str, top_strengths: list[str],
     """
     Generate an inspiring closing Cosmic Summary that ties together
     the individual's archetype, strengths, and growth trajectory.
+    Environmental Demands are reframed as external pressure/challenges,
+    not as a stabilizing strength.
     """
     archetype_label = _display_domain(archetype) if archetype else "your unique profile"
-    strengths_str = " and ".join(_display_domain(s) for s in top_strengths[:2]) if top_strengths else "your core capacities"
+    # Separate Environmental from capacity strengths
+    capacity_strengths = [s for s in top_strengths if s != "ENVIRONMENTAL_DEMANDS"]
+    strengths_str = " and ".join(_display_domain(s) for s in capacity_strengths[:2]) if capacity_strengths else "your core capacities"
     edges_str = " and ".join(_display_domain(e) for e in growth_edges[:2]) if growth_edges else "emerging areas"
 
     return (
-        f"As a {archetype_label}, your executive function galaxy is uniquely yours — "
-        f"shaped by the gravitational pull of {strengths_str} and the expanding frontier of {edges_str}. "
-        f"Every constellation in your galaxy tells a story of how you navigate the world, "
-        f"and the brightest stars are already lighting the way forward. "
-        f"Growth is not about fixing what is broken; it is about aligning what already shines "
-        f"with what is ready to emerge. Your galaxy is expanding — and the best is yet to come."
+        f"As {archetype_label}, your executive function galaxy is uniquely yours — "
+        f"shaped by the stabilizing strength of your {strengths_str} and the demands of your "
+        f"environment that continuously challenge your system. At the same time, your {edges_str} "
+        f"represent areas of expansion, where growth is actively emerging. "
+        f"Every constellation in your galaxy reflects how you navigate pressure, adapt to demand, "
+        f"and sustain performance. Your strongest capacities are already helping you remain steady, "
+        f"even as external forces increase. Growth is not about fixing what is broken; it is about "
+        f"strengthening what supports you while recalibrating what places strain on your system. "
+        f"Your galaxy is not static — it is actively adjusting, evolving, and expanding. "
+        f"And the best is still ahead."
     )
 
 

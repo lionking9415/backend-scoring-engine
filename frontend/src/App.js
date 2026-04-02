@@ -6,7 +6,6 @@ import PaymentSuccess from './components/PaymentSuccess';
 import Login from './components/Login';
 import Signup from './components/Signup';
 import MyReports from './components/MyReports';
-import FullReport from './components/FullReport';
 import axios from 'axios';
 
 function App() {
@@ -165,11 +164,8 @@ function App() {
         
         setAssessmentData(reportData);
         setAssessmentId(reportId);
-        if (paymentStatus === 'paid') {
-          setCurrentView('full-report');
-        } else {
-          setCurrentView('results');
-        }
+        // 🔷 9: Always use unified ScoreCard dashboard for both free and paid
+        setCurrentView('results');
       }
     } catch (err) {
       console.error('Failed to load report:', err);
@@ -314,13 +310,6 @@ function App() {
         />
       )}
 
-      {currentView === 'full-report' && (
-        <FullReport 
-          data={assessmentData}
-          onRestart={handleRestart}
-          assessmentId={assessmentId}
-        />
-      )}
     </div>
   );
 }

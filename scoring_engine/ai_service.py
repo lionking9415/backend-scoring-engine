@@ -110,6 +110,7 @@ CRITICAL GUIDELINES:
 - Write in second person ("you", "your")
 - Keep paragraphs concise (2-4 sentences)
 - Focus on patterns, not judgments
+- IMPORTANT: Environmental Demands represents EXTERNAL PRESSURE on the system, NOT internal capacity or strength. A high Environmental Demands score means HIGH LOAD/STRAIN, not high performance. Never describe Environmental Demands as a strength or positive anchor. Frame it as demand, pressure, or load that the system must manage.
 
 TONE: Professional yet warm, empowering, evidence-based."""
 
@@ -171,14 +172,15 @@ Scores:
 Write 2-3 sentences explaining whether their challenges are driven by external demands, internal capacity, or a mismatch between the two. Be specific about what this means for them.""",
 
         "strengths_analysis": f"""Analyze the top strengths in this executive function profile.
+IMPORTANT: Environmental Demands is NOT a strength — it represents external pressure. Only discuss internal capacity domains as strengths.
 
-Top Strengths:
-{chr(10).join([f'- {s}' for s in top_strengths[:3]])}
+Top Strengths (capacity domains only):
+{chr(10).join([f'- {s}' for s in top_strengths[:3] if s != 'ENVIRONMENTAL_DEMANDS'])}
 
 Domain Details:
 {domain_info}
 
-Write 2-3 sentences explaining how these strengths support their executive functioning and how they can leverage them.""",
+Write 2-3 sentences explaining how these internal capacity strengths support their executive functioning and how they can leverage them. Do NOT include Environmental Demands as a strength.""",
 
         "growth_edges_analysis": f"""Analyze the growth edges in this executive function profile.
 
@@ -190,26 +192,119 @@ Domain Details:
 
 Write 2-3 sentences explaining these growth areas and what targeted support would look like. Focus on actionable insights.""",
 
-        "aims_plan": f"""Create a brief AIMS for the BEST™ intervention plan (3-4 sentences).
+        "aims_plan": f"""Create a brief AIMS for the BEST™ intervention plan following the A→I→M→S order (Awareness, Intervention, Mastery, Sustain).
 
 Growth Edges: {', '.join(growth_edges[:2])}
-Strengths: {', '.join(top_strengths[:2])}
+Strengths (internal capacity only): {', '.join([s for s in top_strengths[:3] if s != 'ENVIRONMENTAL_DEMANDS'])}
+Environmental Load: {'High' if pei_score > 0.7 else 'Moderate' if pei_score > 0.4 else 'Low'}
 
-Outline specific, actionable intervention strategies that address the growth edges while leveraging strengths.""",
+IMPORTANT: Environmental Demands should NOT appear in Sustain. Sustain is only for internal capacity strengths.
+If environmental load is high, address it in Awareness (recognizing pressure) and Intervention (environmental adjustments).
+Outline specific, actionable strategies that address growth edges while leveraging internal capacity strengths.""",
 
         "cosmic_summary": f"""Write a closing "Cosmic Summary" (3-4 sentences) for a {report_type.replace('_', ' ').title()} executive function report.
 
 Assessment Data:
 - Archetype: {archetype}
 - Quadrant: {quadrant}
-- Top Strengths: {', '.join(top_strengths[:2])}
+- Top Strengths (internal capacity): {', '.join([s for s in top_strengths[:2] if s != 'ENVIRONMENTAL_DEMANDS'])}
 - Growth Edges: {', '.join(growth_edges[:2])}
 - Load Balance: {load_balance:.2f}
+- Environmental Load: {'High - significant external pressure' if pei_score > 0.7 else 'Moderate' if pei_score > 0.4 else 'Low'}
 
-Provide an inspiring, forward-looking closing paragraph that ties together their archetype, strengths, and growth trajectory. Use a space/galaxy metaphor naturally. End with an empowering statement about their potential."""
+IMPORTANT: Frame Environmental Demands as external pressure/challenge on the system, NOT as a strength or guiding force.
+Provide an inspiring, forward-looking closing paragraph that ties together their archetype, internal capacity strengths, and growth trajectory while acknowledging the environmental demands they face. Use a space/galaxy metaphor naturally. End with an empowering statement."""
     }
     
     return prompts.get(section_name, f"Generate insights for {section_name} based on the assessment data.")
+
+
+def generate_load_balance_summary(scoring_output: dict) -> str:
+    """
+    Generate AI-powered 2-3 sentence executive summary for load balance section.
+    This is used in the free ScoreCard to provide dynamic, personalized insights.
+    
+    Args:
+        scoring_output: Complete scoring output from the engine
+    
+    Returns:
+        AI-generated summary string, or fallback template if AI unavailable
+    """
+    client = get_openai_client()
+    
+    # Extract load balance data
+    load_framework = scoring_output.get("load_framework", {})
+    pei_score = load_framework.get("pei_score", 0)
+    bhp_score = load_framework.get("bhp_score", 0)
+    load_balance = load_framework.get("load_balance", 0)
+    quadrant = load_framework.get("quadrant", "")
+    load_state = load_framework.get("load_state", "")
+    
+    # Determine load label
+    diff = pei_score - bhp_score
+    if abs(diff) <= 0.5:
+        load_label = "Balanced Under Load"
+    elif diff > 0.5:
+        load_label = "Load Dominant (External)"
+    else:
+        load_label = "Capacity Dominant (Internal)"
+    
+    # Fallback summaries if AI unavailable
+    fallback_summaries = {
+        "Balanced Under Load": "You are operating with strong internal capacity, while your environment is placing sustained demands on your system. You are maintaining performance, but this pattern may require adjustment to remain sustainable over time.",
+        "Load Dominant (External)": "Your environmental demands are currently exceeding your internal capacity. This mismatch may be driving challenges in executive functioning. Targeted strategies can help restore balance.",
+        "Capacity Dominant (Internal)": "Your internal capacity is currently exceeding the demands placed on you by your environment. This surplus creates room for growth and proactive development of executive functioning skills."
+    }
+    
+    if not client:
+        return fallback_summaries.get(load_label, fallback_summaries["Balanced Under Load"])
+    
+    try:
+        prompt = f"""Write a 2-3 sentence executive summary explaining this individual's load balance state.
+
+Load Balance Data:
+- PEI Score (Environmental Demand): {pei_score:.2f}
+- BHP Score (Internal Capacity): {bhp_score:.2f}
+- Load Balance: {load_balance:.2f}
+- Load State: {load_state}
+- Quadrant: {quadrant}
+- Load Label: {load_label}
+
+IMPORTANT: Environmental Load represents external PRESSURE, not strength. High PEI means high strain on the system.
+If PEI is very high (>0.8) and exceeds BHP, this is a Critical Overload state — frame accordingly.
+Do NOT use report-type-specific language like 'Student Success'. Use 'assessment results' for broader applicability.
+
+Provide a clear, actionable summary that:
+1. Explains the relationship between their environmental demands and internal capacity
+2. Describes what this means for their executive functioning
+3. Notes that high environmental load represents pressure, not performance
+4. Hints at sustainability or next steps
+
+Use second person ("you", "your"). Be compassionate and strength-based. Keep it concise (2-3 sentences max)."""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": _get_system_prompt()
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            max_tokens=150,
+            temperature=0.7
+        )
+        
+        summary = response.choices[0].message.content.strip()
+        logger.info(f"Generated AI load balance summary: {len(summary)} chars")
+        return summary
+        
+    except Exception as e:
+        logger.error(f"AI load balance summary generation failed: {e}")
+        return fallback_summaries.get(load_label, fallback_summaries["Balanced Under Load"])
 
 
 def generate_full_ai_interpretation(scoring_output: dict) -> dict:

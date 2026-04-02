@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import FullReport from './FullReport';
+import ScoreCard from './ScoreCard';
 
 const PaymentSuccess = () => {
   const [loading, setLoading] = useState(true);
@@ -9,7 +9,6 @@ const PaymentSuccess = () => {
 
   useEffect(() => {
     const fetchReport = async () => {
-      // Get assessment_id from URL params
       const params = new URLSearchParams(window.location.search);
       const assessmentId = params.get('assessment_id');
 
@@ -20,7 +19,6 @@ const PaymentSuccess = () => {
       }
 
       try {
-        // Fetch the full report (should now be unlocked)
         const response = await axios.get(`/api/v1/results/${assessmentId}`);
         
         if (response.data.success) {
@@ -70,7 +68,8 @@ const PaymentSuccess = () => {
   if (reportData) {
     const params = new URLSearchParams(window.location.search);
     const assessmentId = params.get('assessment_id');
-    return <FullReport data={reportData} onRestart={() => window.location.href = '/'} assessmentId={assessmentId} />;
+    // 🔷 9: Use unified ScoreCard dashboard — paid data auto-detected and expanded
+    return <ScoreCard data={reportData} onRestart={() => window.location.href = '/'} assessmentId={assessmentId} />;
   }
 
   return (

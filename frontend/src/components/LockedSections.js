@@ -48,7 +48,7 @@ const LockedSections = ({ features, assessmentId, userEmail }) => {
   return (
     <div className="bg-white rounded-2xl shadow-md p-6">
       <h2 className="text-xl font-bold text-gray-800 mb-5">
-        Your Full Galaxy Report Awaits
+        Deeper Layers Await
       </h2>
 
       <div className="space-y-3">
@@ -81,8 +81,11 @@ const LockedSections = ({ features, assessmentId, userEmail }) => {
 
       {/* Upgrade CTA */}
       <div className="mt-6 text-center">
-        <p className="text-gray-500 text-sm mb-4">
-          Unlock your full Galaxy Report to see how everything connects.
+        <p className="text-gray-600 text-sm mb-2 italic">
+          You've seen the surface. Now see the system.
+        </p>
+        <p className="text-gray-500 text-xs mb-4">
+          Your full report includes your personalized AIMS for the BEST™ intervention pathway.
         </p>
         
         {error && (
@@ -96,7 +99,7 @@ const LockedSections = ({ features, assessmentId, userEmail }) => {
           disabled={loading}
           className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-3 px-8 rounded-xl text-lg shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Processing...' : 'Unlock Full Galaxy Report'}
+          {loading ? 'Processing...' : 'Unlock Full Galaxy'}
         </button>
         <p className="text-gray-400 text-xs mt-2">
           {loading ? 'Redirecting to secure checkout...' : 'Secure payment via Stripe'}

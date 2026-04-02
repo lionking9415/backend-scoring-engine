@@ -445,7 +445,9 @@ def create_app(use_database: bool = False) -> FastAPI:
             from scoring_engine.supabase_client import get_supabase_client
             
             # Get user_id from email (since database stores by user_id which is email)
+            logger.info(f"Fetching reports for user_email: {user_email}")
             reports = get_results_by_user(user_email)
+            logger.info(f"Found {len(reports)} reports from database")
             
             # Enrich with payment status
             supabase = get_supabase_client()
@@ -467,6 +469,7 @@ def create_app(use_database: bool = False) -> FastAPI:
                     'payment_status': payment_status
                 })
             
+            logger.info(f"Returning {len(enriched_reports)} enriched reports")
             return {"success": True, "reports": enriched_reports}
             
         except Exception as e:
@@ -574,5 +577,5 @@ def create_app(use_database: bool = False) -> FastAPI:
     return app
 
 
-# Default app instance (no database — for development/testing)
-app = create_app(use_database=False)
+# Default app instance with database enabled
+app = create_app(use_database=True)
