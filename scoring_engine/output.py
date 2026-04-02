@@ -214,7 +214,8 @@ def build_scorecard_output(full_output: dict) -> dict:
     constellation = _group_domain_scores(domain_profiles)
 
     # 3. Load Balance Snapshot with AI-generated executive summary
-    load_status = get_load_balance_status(load_balance)
+    # Note: We pass raw BHP/PEI scores so frontend can calculate the same 5-level
+    # load balance system (Surplus Capacity → Critical Overload) as paid report
     
     # Generate AI-powered executive summary for load balance
     try:
@@ -267,7 +268,6 @@ def build_scorecard_output(full_output: dict) -> dict:
         },
         "constellation": constellation,
         "load_balance": {
-            "status": load_status,
             "message": "Your environment and internal capacity are interacting in important ways...",
             "executive_summary": load_executive_summary,
             "pei_score": full_output["load_framework"].get("pei_score", 0),
