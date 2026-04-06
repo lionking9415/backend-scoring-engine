@@ -199,8 +199,15 @@ def build_scorecard_output(full_output: dict) -> dict:
     
     Excludes: Full domain breakdown, item scores, AIMS plan, AI narratives.
     """
-    quadrant = full_output["load_framework"]["quadrant"]
-    load_balance = full_output["load_framework"]["load_balance"]
+    lf = full_output["load_framework"]
+    quadrant = lf["quadrant"]
+    load_balance = lf["load_balance"]
+    
+    # Extract PEI/BHP scores — try direct keys first, then fall back to coordinates
+    coords = lf.get("coordinates", {})
+    pei_val = lf.get("PEI_score") or lf.get("pei_score") or coords.get("x", 0)
+    bhp_val = lf.get("BHP_score") or lf.get("bhp_score") or coords.get("y", 0)
+    
     archetype = full_output.get("archetype", {})
     domain_profiles = full_output["domains"]
     top_strengths = full_output["summary"]["top_strengths"]
@@ -270,8 +277,8 @@ def build_scorecard_output(full_output: dict) -> dict:
         "load_balance": {
             "message": "Your environment and internal capacity are interacting in important ways...",
             "executive_summary": load_executive_summary,
-            "pei_score": full_output["load_framework"].get("pei_score", 0),
-            "bhp_score": full_output["load_framework"].get("bhp_score", 0),
+            "pei_score": pei_val,
+            "bhp_score": bhp_val,
         },
         "strengths": display_strengths,
         "growth_edges": display_edges,

@@ -380,7 +380,9 @@ def generate_aims_plan(domain_profiles: list[dict]) -> dict:
     awareness = (
         f"Begin by building awareness of how your internal capacity is interacting "
         f"with your current level of environmental load."
-        f"{env_note}"
+        f"{env_note} "
+        f"This phase helps you identify where environmental load (PEI) may be "
+        f"exceeding your current internal capacity (BHP)."
     )
 
     env_intervention = ""
@@ -394,19 +396,25 @@ def generate_aims_plan(domain_profiles: list[dict]) -> dict:
         f"Targeted skill-building is recommended for: {_domain_list(emerging_domains + growth_domains)}. "
         f"These areas will benefit from structured practice to improve consistency "
         f"and cognitive flexibility."
-        f"{env_intervention}"
+        f"{env_intervention} "
+        f"Intervention focuses on both strengthening internal capacity (BHP) and "
+        f"reducing excessive environmental load (PEI)."
     )
 
     mastery = (
         f"Continue strengthening and integrating skills in: {_domain_list(developed_domains)}. "
         f"These domains are functional and can be further optimized through consistent practice, "
-        f"allowing your system to perform more efficiently under varying levels of demand."
+        f"allowing your system to perform more efficiently under varying levels of demand. "
+        f"Mastery increases your system's ability to function effectively under "
+        f"varying levels of environmental load."
     )
 
     sustain = (
         f"Sustain and generalize your strengths in: {_domain_list(strength_domains)}. "
         f"These domains serve as stabilizing anchors for your system and can help "
-        f"maintain balance, especially when external pressures increase."
+        f"maintain balance, especially when external pressures increase. "
+        f"Sustain stabilizes your system so it can maintain balance even as "
+        f"environmental demands fluctuate."
     )
 
     return {

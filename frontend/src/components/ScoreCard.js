@@ -6,7 +6,7 @@ const DOMAIN_META = {
   'Executive Skills & Behavior':       { tag: 'Action & Follow-Through',  color: '#3B82F6', bgClass: 'bg-blue-500' },
   'Cognitive & Motivational Systems':  { tag: 'Focus & Drive',            color: '#8B5CF6', bgClass: 'bg-purple-500' },
   'Emotional & Internal State':        { tag: 'Emotional Regulation',     color: '#F59E0B', bgClass: 'bg-yellow-500' },
-  'Environmental Demands':             { tag: 'Life Load',                color: '#EF4444', bgClass: 'bg-red-500' },
+  'Environmental Demands':             { tag: 'Environmental Pressure Load (PEI)', color: '#EF4444', bgClass: 'bg-red-500' },
 };
 
 // 🔷 3: Dynamic load balance label logic — aligned with backend load_state
@@ -103,6 +103,7 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
   const [downloadingPdf, setDownloadingPdf] = React.useState(false);
   const [pdfError, setPdfError] = React.useState(null);
   const [expandedSections, setExpandedSections] = React.useState({});
+  const [selectedLens, setSelectedLens] = React.useState(null);
 
   if (!data) {
     return (
@@ -142,14 +143,27 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
       setPdfError('No assessment ID available');
       return;
     }
+    // For paid reports, require lens selection
+    if (isPaid && !selectedLens) {
+      setPdfError('Please select a report lens before downloading');
+      return;
+    }
     setDownloadingPdf(true);
     setPdfError(null);
 
     try {
       const axios = (await import('axios')).default;
-      const endpoint = isPaid
-        ? `/api/v1/export/pdf/${assessmentId}`
-        : `/api/v1/export/scorecard-pdf/${assessmentId}`;
+      
+      // Build endpoint with lens parameter for paid reports
+      let endpoint;
+      if (isPaid) {
+        endpoint = `/api/v1/export/pdf/${assessmentId}`;
+        if (selectedLens) {
+          endpoint += `?lens=${selectedLens}`;
+        }
+      } else {
+        endpoint = `/api/v1/export/scorecard-pdf/${assessmentId}`;
+      }
 
       const response = await axios.get(endpoint, {
         responseType: 'blob',
@@ -160,8 +174,18 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      const prefix = isPaid ? 'BEST_Galaxy_FullReport' : 'BEST_Galaxy_ScoreCard';
-      link.download = `${prefix}_${new Date().toISOString().split('T')[0]}.pdf`;
+      
+      // Include lens name in filename for paid reports
+      let filename;
+      if (isPaid && selectedLens) {
+        const lensName = selectedLens.replace(/_/g, '_');
+        filename = `BEST_Galaxy_${lensName}_${new Date().toISOString().split('T')[0]}.pdf`;
+      } else {
+        const prefix = isPaid ? 'BEST_Galaxy_FullReport' : 'BEST_Galaxy_ScoreCard';
+        filename = `${prefix}_${new Date().toISOString().split('T')[0]}.pdf`;
+      }
+      
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -323,7 +347,7 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
                     <div className="flex justify-between items-baseline mb-1">
                       <div>
                         <span className="font-semibold" style={{ color: domainMeta.color }}>
-                          {isEnv ? `Life Load` : group.name}
+                          {isEnv ? '⚠️ Environmental Pressure Load (PEI)' : group.name}
                         </span>
                         {domainMeta.tag && (
                           <span className="block text-xs text-gray-500 mt-0.5">
@@ -335,13 +359,15 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
                         {isEnv ? `${group.percentage}% (${getEnvPressureLabel(group.percentage)})` : `${group.percentage}%`}
                       </span>
                     </div>
-                    <div className={`w-full bg-gray-100 rounded-full h-3 relative ${isEnv && group.percentage >= 80 ? 'ring-2 ring-red-300 ring-opacity-75' : ''}`}>
+                    <div className={`w-full bg-gray-100 rounded-full h-3 relative ${isEnv && group.percentage >= 60 ? 'ring-2 ring-red-300 ring-opacity-75' : ''}`}
+                      style={isEnv ? { boxShadow: group.percentage >= 60 ? '0 0 8px rgba(239, 68, 68, 0.4)' : 'none' } : {}}
+                    >
                       {isEnv ? (
                         <div
                           className="h-3 rounded-full transition-all duration-700"
                           style={{
                             width: `${group.percentage}%`,
-                            backgroundColor: domainMeta.color,
+                            background: `linear-gradient(to left, #FCA5A5, #EF4444, #B91C1C)`,
                             marginLeft: 'auto',
                             float: 'right',
                           }}
@@ -353,7 +379,7 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
                         ></div>
                       )}
                     </div>
-                    {isEnv && group.percentage >= 80 && (
+                    {isEnv && group.percentage >= 60 && (
                       <div className="flex items-center mt-1">
                         <span className="text-xs text-red-500 font-medium animate-pulse">⚠ Elevated environmental pressure detected</span>
                       </div>
@@ -365,44 +391,141 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
           </div>
         </div>
 
-        {/* ── 3. LOAD BALANCE SNAPSHOT ── */}
-        <div className={`rounded-2xl shadow-md p-6 border-2 ${getLoadColor(loadLabel)}`}>
-          <div className="flex items-center space-x-3 mb-2">
-            <span className="text-2xl">{getLoadIcon(loadLabel)}</span>
-            <h2 className="text-xl font-bold">Load Balance: {loadLabel}</h2>
-          </div>
+        {/* ── 3. LOAD BALANCE — TEETER-TOTTER VISUALIZATION ── */}
+        <div className="mt-6">
+        {(() => {
+          const bhp = load_balance?.bhp_score || 0;
+          const pei = load_balance?.pei_score || 0;
+          const delta = pei - bhp;
+          const absDelta = Math.abs(delta);
+          // Tilt angle: slight 4°, moderate 8°, high 13°, max 15°
+          let tiltAngle = 0;
+          let tiltLabel = 'Balanced';
+          if (absDelta < 0.01) { tiltAngle = 0; tiltLabel = 'Balanced'; }
+          else if (absDelta < 0.05) { tiltAngle = 4; tiltLabel = delta > 0 ? 'Balanced Under Load' : 'Capacity Supported'; }
+          else if (absDelta < 0.12) { tiltAngle = 8; tiltLabel = delta > 0 ? 'Capacity Strain' : 'Capacity Dominant'; }
+          else { tiltAngle = 13; tiltLabel = delta > 0 ? 'Critical Overload' : 'Capacity Dominant'; }
+          // Direction: positive delta = PEI heavier = clockwise tilt (right side down)
+          const beamRotation = delta > 0 ? tiltAngle : -tiltAngle;
+          // Delta color
+          const deltaColor = delta > 0.01 ? '#DC2626' : delta < -0.01 ? '#2563EB' : '#6B7280';
+          const deltaSign = delta > 0 ? '+' : '';
+          // Pressure level chip
+          const pressureLevel = absDelta < 0.01 ? 'None' : absDelta < 0.05 ? 'Mild' : absDelta < 0.12 ? 'Moderate' : 'High';
 
-          <div className="load-balance-visual-container my-3">
-            <div className="flex items-center justify-center space-x-4">
-              <div className="text-center">
-                <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Internal Capacity (BHP)</div>
-                <div className="h-2 rounded-full bg-indigo-400" style={{ width: `${Math.min((load_balance?.bhp_score || 0.5) * 100, 100)}px` }}></div>
-                {isPaid && <div className="text-sm font-semibold text-indigo-600 mt-1">{(load_balance?.bhp_score || 0).toFixed(3)}</div>}
+          return (
+            <div className="bg-white rounded-2xl p-7 border border-gray-200" style={{ boxShadow: '0 8px 24px rgba(31, 41, 55, 0.08)', maxWidth: '920px', margin: '0 auto' }}>
+              {/* Header Row */}
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="#D4A62A"><path d="M12 3L2 12h3v8h14v-8h3L12 3zm0 2.84L18.16 11H17v7H7v-7H5.84L12 5.84z" opacity=".3"/><path d="M12 1L1 11h3v10h16V11h3L12 1zm6 18H6v-8.17l6-5.34 6 5.34V19z"/></svg>
+                  <h2 className="text-lg font-bold" style={{ color: '#2563EB' }}>Load Balance: {loadLabel}</h2>
+                </div>
+                <span className="text-xs font-semibold px-3 py-1 rounded-full" style={{ background: '#EEF4FF', color: '#2563EB' }}>
+                  {tiltLabel}
+                </span>
               </div>
-              <span className="text-gray-400 text-lg">⚖️</span>
-              <div className="text-center">
-                <div className="text-xs uppercase tracking-wide text-gray-500 mb-1">Environmental Load (PEI)</div>
-                <div className="h-2 rounded-full bg-red-400" style={{ width: `${Math.min((load_balance?.pei_score || 0.5) * 100, 100)}px` }}></div>
-                {isPaid && <div className="text-sm font-semibold text-red-600 mt-1">{(load_balance?.pei_score || 0).toFixed(3)}</div>}
+
+              {/* Teeter-Totter Visualization */}
+              <div className="flex flex-col items-center" style={{ minHeight: '180px' }}>
+                {/* Labels above beam */}
+                <div className="flex justify-between w-full" style={{ maxWidth: '560px' }}>
+                  <div className="text-center">
+                    <div className="text-xs font-bold tracking-wide" style={{ color: '#6B7280' }}>INTERNAL CAPACITY (BHP)</div>
+                    <div className="mx-auto mt-1 rounded-full" style={{ width: '48px', height: '4px', background: '#8B5CF6' }}></div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs font-bold tracking-wide" style={{ color: '#6B7280' }}>ENVIRONMENTAL LOAD (PEI)</div>
+                    <div className="mx-auto mt-1 rounded-full" style={{ width: '48px', height: '4px', background: '#F87171' }}></div>
+                  </div>
+                </div>
+
+                {/* Beam + Nodes */}
+                <div className="relative flex items-center justify-center mt-4" style={{ width: '100%', maxWidth: '560px', height: '80px' }}>
+                  {/* BHP Node (left) */}
+                  <div className="absolute flex flex-col items-center justify-center rounded-full text-white"
+                    style={{
+                      width: '52px', height: '52px', background: '#8B5CF6',
+                      left: '0', top: '50%',
+                      transform: `translateY(-50%) translateY(${Math.sin(beamRotation * Math.PI / 180) * -60}px)`,
+                      zIndex: 2, transition: 'transform 0.5s ease',
+                    }}>
+                    <span style={{ fontSize: '10px', fontWeight: 600 }}>BHP</span>
+                    <span style={{ fontSize: '14px', fontWeight: 700 }}>{bhp.toFixed(3)}</span>
+                  </div>
+
+                  {/* Beam */}
+                  <div style={{
+                    width: '340px', height: '8px', borderRadius: '999px', background: '#C9D2E3',
+                    transform: `rotate(${beamRotation}deg)`,
+                    transition: 'transform 0.5s ease',
+                  }}></div>
+
+                  {/* PEI Node (right) */}
+                  <div className="absolute flex flex-col items-center justify-center rounded-full text-white"
+                    style={{
+                      width: '52px', height: '52px', background: '#F87171',
+                      right: '0', top: '50%',
+                      transform: `translateY(-50%) translateY(${Math.sin(beamRotation * Math.PI / 180) * 60}px)`,
+                      zIndex: 2, transition: 'transform 0.5s ease',
+                    }}>
+                    <span style={{ fontSize: '10px', fontWeight: 600 }}>PEI</span>
+                    <span style={{ fontSize: '14px', fontWeight: 700 }}>{pei.toFixed(3)}</span>
+                  </div>
+                </div>
+
+                {/* Pivot triangle */}
+                <div style={{ width: 0, height: 0, borderLeft: '17px solid transparent', borderRight: '17px solid transparent', borderBottom: '26px solid #D4A62A', marginTop: '-4px' }}></div>
+
+                {/* Delta indicator */}
+                <div className="text-center mt-2">
+                  <span className="text-sm font-semibold" style={{ color: deltaColor }}>
+                    Load Difference: {deltaSign}{delta.toFixed(3)}
+                  </span>
+                  <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
+                    {absDelta < 0.01 ? 'Environmental Load Matches Capacity' :
+                     delta > 0 ? 'Environmental Load Exceeds Capacity' : 'Internal Capacity Exceeds Load'}
+                  </p>
+                </div>
               </div>
-            </div>
-          </div>
 
-          <p className="text-gray-600 italic mb-3">
-            {load_balance?.message}
-          </p>
-
-          {load_balance?.executive_summary && (
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <p className="text-gray-700 text-sm leading-relaxed">
-                {load_balance.executive_summary}
+              {/* Interpretation line */}
+              <p className="text-center italic mt-3 mb-4" style={{ fontSize: '16px', color: '#4B5563' }}>
+                {load_balance?.message || 'Your environment and internal capacity are interacting in important ways...'}
               </p>
+
+              {/* Divider */}
+              <div style={{ width: '100%', height: '1px', background: '#E5E7EB', margin: '0 0 18px 0' }}></div>
+
+              {/* Classification chips */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <span className="inline-flex items-center gap-1 text-xs rounded-full border px-3 py-1" style={{ background: '#F8FAFC', borderColor: '#E5E7EB' }}>
+                  <span className="font-semibold" style={{ color: '#6B7280' }}>Load State:</span>
+                  <span className="font-bold" style={{ color: '#111827' }}>{loadLabel}</span>
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs rounded-full border px-3 py-1" style={{ background: '#F8FAFC', borderColor: '#E5E7EB' }}>
+                  <span className="font-semibold" style={{ color: '#6B7280' }}>System Status:</span>
+                  <span className="font-bold" style={{ color: '#111827' }}>{tiltLabel}</span>
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs rounded-full border px-3 py-1" style={{ background: '#F8FAFC', borderColor: '#E5E7EB' }}>
+                  <span className="font-semibold" style={{ color: '#6B7280' }}>Pressure Level:</span>
+                  <span className="font-bold" style={{ color: '#111827' }}>{pressureLevel}</span>
+                </span>
+              </div>
+
+              {/* Executive summary paragraph */}
+              {load_balance?.executive_summary && (
+                <p style={{ fontSize: '15px', lineHeight: 1.7, color: '#374151' }}>
+                  {load_balance.executive_summary}
+                </p>
+              )}
             </div>
-          )}
+          );
+        })()}
         </div>
 
         {/* ── 4. STRENGTHS + KEY PRESSURES + GROWTH EDGES ── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className={`grid grid-cols-1 gap-4 ${constellation?.some(g => isEnvironmentalDomain(g.name) && g.percentage >= 60) ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
           <div className="bg-white rounded-2xl shadow-md p-6">
             <h3 className="font-bold text-green-700 mb-3">✓ Top Strengths</h3>
             <ul className="space-y-2">
@@ -633,39 +756,88 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
           />
         )}
 
-        {/* ── DOWNLOAD PDF ── */}
-        <div className="bg-white rounded-2xl shadow-md p-6 text-center">
-          <h3 className="text-lg font-bold text-gray-800 mb-3">
-            {isPaid ? '📄 Download Your Full Galaxy Report' : '📄 Download Your Free ScoreCard'}
-          </h3>
-          <p className="text-gray-600 text-sm mb-4">
-            {isPaid
-              ? 'Save your complete executive function report as a PDF.'
-              : 'Save your executive function profile as a PDF for your records.'}
-          </p>
-
-          {pdfError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-              <p className="font-semibold mb-1">Download Failed</p>
-              <p>{pdfError}</p>
-            </div>
+        {/* ── REPORT LENS SELECTION (Paid) + DOWNLOAD PDF ── */}
+        <div className="bg-white rounded-2xl shadow-md p-6">
+          {isPaid && (
+            <>
+              <h2 className="text-xl font-bold text-gray-800 mb-2 text-center">Select Your Report Lens</h2>
+              <p className="text-gray-500 text-sm text-center mb-5">
+                Your assessment data can be interpreted through multiple lenses. Choose the perspective most relevant to you.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                {[
+                  { key: 'PERSONAL_LIFESTYLE', icon: '🔵', title: 'Personal / Lifestyle', desc: 'Understand how your executive functioning shows up in your daily life — from routines and organization to energy, consistency, and self-management.' },
+                  { key: 'STUDENT_SUCCESS', icon: '🟣', title: 'Student Success', desc: 'Explore how your executive functioning impacts learning, focus, organization, and academic performance.' },
+                  { key: 'PROFESSIONAL_LEADERSHIP', icon: '🔴', title: 'Professional / Leadership', desc: 'Discover how your executive functioning influences productivity, decision-making, leadership, and performance under pressure.' },
+                  { key: 'FAMILY_ECOSYSTEM', icon: '🟡', title: 'Family Ecosystem', desc: 'Gain insight into how your executive functioning operates within your relationships and family environment.' },
+                  { key: 'FULL_GALAXY', icon: '🌠', title: 'Full Galaxy Report', desc: 'Experience the complete picture of your executive functioning system across all areas of life — personal, academic, professional, and family lenses unified.' },
+                ].map(lens => {
+                  const isSelected = selectedLens === lens.key;
+                  return (
+                    <div
+                      key={lens.key}
+                      onClick={() => setSelectedLens(lens.key)}
+                      className={`border-2 rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${
+                        isSelected
+                          ? 'border-indigo-600 bg-indigo-100 ring-2 ring-indigo-300'
+                          : 'border-indigo-200 bg-indigo-50/30 hover:border-indigo-400'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        {isSelected && <span className="text-sm">✓</span>}
+                        <span className="text-lg">{lens.icon}</span>
+                        <h3 className={`font-bold text-sm ${
+                          isSelected ? 'text-indigo-900' : 'text-gray-800'
+                        }`}>{lens.title}</h3>
+                      </div>
+                      <p className={`text-xs leading-relaxed ${
+                        isSelected ? 'text-indigo-700' : 'text-gray-600'
+                      }`}>{lens.desc}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="border-t border-gray-200 pt-5" />
+            </>
           )}
 
-          <button
-            onClick={handleDownloadPdf}
-            disabled={downloadingPdf || !assessmentId}
-            className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {downloadingPdf
-              ? '⏳ Generating PDF...'
-              : isPaid ? 'Download Full Report PDF' : 'Download Free ScoreCard PDF'}
-          </button>
-
-          {!assessmentId && (
-            <p className="text-xs text-red-600 mt-2">
-              Assessment ID missing - cannot download PDF
+          <div className="text-center">
+            <h3 className="text-lg font-bold text-gray-800 mb-3">
+              {isPaid ? '📄 Download Your Full Galaxy Report' : '📄 Download Your Free ScoreCard'}
+            </h3>
+            <p className="text-gray-600 text-sm mb-4">
+              {isPaid
+                ? 'Save your complete executive function report as a PDF.'
+                : 'Save your executive function profile as a PDF for your records.'}
             </p>
-          )}
+
+            {pdfError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                <p className="font-semibold mb-1">Download Failed</p>
+                <p>{pdfError}</p>
+              </div>
+            )}
+
+            <button
+              onClick={handleDownloadPdf}
+              disabled={downloadingPdf || !assessmentId || (isPaid && !selectedLens)}
+              className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {downloadingPdf
+                ? '⏳ Generating PDF...'
+                : isPaid && selectedLens
+                ? `Download ${selectedLens.replace(/_/g, ' ').replace(/FULL GALAXY/, 'Full Galaxy')} Report`
+                : isPaid
+                ? 'Select a Lens to Download'
+                : 'Download Free ScoreCard PDF'}
+            </button>
+
+            {!assessmentId && (
+              <p className="text-xs text-red-600 mt-2">
+                Assessment ID missing - cannot download PDF
+              </p>
+            )}
+          </div>
         </div>
 
         {/* ── FOOTER ── */}

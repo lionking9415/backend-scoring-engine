@@ -200,7 +200,13 @@ Environmental Load: {'High' if pei_score > 0.7 else 'Moderate' if pei_score > 0.
 
 IMPORTANT: Environmental Demands should NOT appear in Sustain. Sustain is only for internal capacity strengths.
 If environmental load is high, address it in Awareness (recognizing pressure) and Intervention (environmental adjustments).
-Outline specific, actionable strategies that address growth edges while leveraging internal capacity strengths.""",
+Outline specific, actionable strategies that address growth edges while leveraging internal capacity strengths.
+
+Include these closing sentences in each phase:
+- Awareness: "This phase helps you identify where environmental load (PEI) may be exceeding your current internal capacity (BHP)."
+- Intervention: "Intervention focuses on both strengthening internal capacity (BHP) and reducing excessive environmental load (PEI)."
+- Mastery: "Mastery increases your system's ability to function effectively under varying levels of environmental load."
+- Sustain: "Sustain stabilizes your system so it can maintain balance even as environmental demands fluctuate." """,
 
         "cosmic_summary": f"""Write a closing "Cosmic Summary" (3-4 sentences) for a {report_type.replace('_', ' ').title()} executive function report.
 
@@ -234,8 +240,9 @@ def generate_load_balance_summary(scoring_output: dict) -> str:
     
     # Extract load balance data
     load_framework = scoring_output.get("load_framework", {})
-    pei_score = load_framework.get("pei_score", 0)
-    bhp_score = load_framework.get("bhp_score", 0)
+    coords = load_framework.get("coordinates", {})
+    pei_score = load_framework.get("PEI_score") or load_framework.get("pei_score") or coords.get("x", 0)
+    bhp_score = load_framework.get("BHP_score") or load_framework.get("bhp_score") or coords.get("y", 0)
     load_balance = load_framework.get("load_balance", 0)
     quadrant = load_framework.get("quadrant", "")
     load_state = load_framework.get("load_state", "")

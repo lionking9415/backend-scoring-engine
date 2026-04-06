@@ -545,17 +545,28 @@ def create_app(use_database: bool = False) -> FastAPI:
         )
 
     @app.get("/api/v1/export/pdf/{result_id}")
-    def export_pdf(result_id: str):
-        """Generate and download Full Report PDF (paid tier)."""
+    def export_pdf(result_id: str, lens: Optional[str] = None):
+        """Generate and download Full Report PDF (paid tier).
+        
+        Args:
+            result_id: Assessment result ID
+            lens: Optional lens to generate (PERSONAL_LIFESTYLE, STUDENT_SUCCESS, 
+                  PROFESSIONAL_LEADERSHIP, FAMILY_ECOSYSTEM, FULL_GALAXY).
+                  If not provided, uses the original report_type from metadata.
+        """
         from fastapi.responses import Response
         from scoring_engine.pdf_service import generate_pdf_report
         
-        logger.info(f"Full Report PDF export requested for result_id: {result_id}")
+        logger.info(f"Full Report PDF export requested for result_id: {result_id}, lens: {lens}")
         result_data = _fetch_result(result_id)
         
-        logger.info(f"Generating Full Report PDF for result_id: {result_id}, report_type: {result_data.get('metadata', {}).get('report_type')}")
+        # Use provided lens or fall back to original report_type
+        original_report_type = result_data.get('metadata', {}).get('report_type')
+        report_type = lens if lens else original_report_type
+        
+        logger.info(f"Generating Full Report PDF for result_id: {result_id}, report_type: {report_type} (original: {original_report_type})")
         try:
-            pdf_bytes = generate_pdf_report(result_data)
+            pdf_bytes = generate_pdf_report(result_data, lens_override=lens)
             if pdf_bytes:
                 logger.info(f"Full Report PDF generated: {len(pdf_bytes)} bytes")
             else:
@@ -567,7 +578,9 @@ def create_app(use_database: bool = False) -> FastAPI:
         if not pdf_bytes:
             raise HTTPException(status_code=500, detail="Failed to generate PDF - no bytes returned")
         
-        filename = f"BEST_Galaxy_Report_{result_id[:8]}.pdf"
+        # Include lens name in filename if specified
+        lens_suffix = f"_{lens}" if lens else ""
+        filename = f"BEST_Galaxy_Report{lens_suffix}_{result_id[:8]}.pdf"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",

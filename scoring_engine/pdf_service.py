@@ -172,7 +172,7 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
             'Executive Skills & Behavior':      {'tag': 'Action & Follow-Through',  'color': '#3B82F6'},
             'Cognitive & Motivational Systems': {'tag': 'Focus & Drive',            'color': '#8B5CF6'},
             'Emotional & Internal State':       {'tag': 'Emotional Regulation',     'color': '#F59E0B'},
-            'Environmental Demands':            {'tag': 'Life Load',                'color': '#EF4444'},
+            'Environmental Demands':            {'tag': 'Environmental Pressure Load (PEI)', 'color': '#EF4444'},
         }
         
         # ── 2. EXECUTIVE FUNCTION CONSTELLATION (4 grouped domains) ──
@@ -184,7 +184,7 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
             pct = group.get('percentage', 0)
             meta = DOMAIN_META.get(group['name'], {'tag': '', 'color': '#6B7280'})
             is_env = group['name'] == 'Environmental Demands'
-            display_name = 'Life Load' if is_env else group['name']
+            display_name = '⚠️ Env. Pressure Load (PEI)' if is_env else group['name']
             display_tag = 'Higher = More Pressure' if is_env else meta['tag']
             display_pct = f"{pct}% ({'High Pressure' if pct >= 80 else 'Moderate Pressure' if pct >= 60 else pct})" if is_env else f"{pct}%"
             constellation_data.append([
@@ -222,37 +222,40 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         elements.append(const_table)
         elements.append(Spacer(1, 0.2 * inch))
         
-        # ── 3. LOAD BALANCE ──
-        elements.append(Paragraph("Load Balance", heading_style))
-        load_status = load_balance.get('status', 'Unknown')
+        # ── 3. LOAD BALANCE (Teeter-Totter Style) ──
         load_msg = load_balance.get('message', '')
         executive_summary = load_balance.get('executive_summary', '')
         pei_score = load_balance.get('pei_score', 0)
         bhp_score = load_balance.get('bhp_score', 0)
         
         # Dynamic load label — aligned with backend load_state thresholds
-        if pei_score and bhp_score:
-            diff = bhp_score - pei_score  # BHP - PEI (positive = capacity surplus)
-            if diff >= 0.20:
-                dynamic_label = 'Surplus Capacity'
-            elif diff >= 0.05:
-                dynamic_label = 'Stable Capacity'
-            elif diff >= -0.04:
-                dynamic_label = 'Balanced Load'
-            elif diff >= -0.19:
-                dynamic_label = 'Emerging Strain'
-            else:
-                dynamic_label = 'Critical Overload'
-        elif 'Balanced' in load_status and 'Imbalanced' not in load_status:
+        diff_val = (bhp_score or 0) - (pei_score or 0)
+        delta = (pei_score or 0) - (bhp_score or 0)
+        abs_delta = abs(delta)
+        if diff_val >= 0.20:
+            dynamic_label = 'Surplus Capacity'
+        elif diff_val >= 0.05:
+            dynamic_label = 'Stable Capacity'
+        elif diff_val >= -0.04:
             dynamic_label = 'Balanced Load'
-        elif 'Slightly' in load_status:
+        elif diff_val >= -0.19:
             dynamic_label = 'Emerging Strain'
-        elif 'High' in load_status:
-            dynamic_label = 'Critical Overload'
         else:
-            dynamic_label = 'Emerging Strain'
+            dynamic_label = 'Critical Overload'
         
-        # Color-code load status
+        # Tilt label for teeter-totter
+        if abs_delta < 0.01:
+            tilt_label = 'Balanced'
+        elif abs_delta < 0.05:
+            tilt_label = 'Balanced Under Load' if delta > 0 else 'Capacity Supported'
+        elif abs_delta < 0.12:
+            tilt_label = 'Capacity Strain' if delta > 0 else 'Capacity Dominant'
+        else:
+            tilt_label = 'Critical Overload' if delta > 0 else 'Capacity Dominant'
+        
+        pressure_level = 'None' if abs_delta < 0.01 else 'Mild' if abs_delta < 0.05 else 'Moderate' if abs_delta < 0.12 else 'High'
+        
+        # Color-code
         if dynamic_label in ('Surplus Capacity', 'Stable Capacity'):
             status_color = '#10B981'
         elif dynamic_label == 'Balanced Load':
@@ -262,18 +265,61 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         else:
             status_color = '#EF4444'
         
-        elements.append(Paragraph(
-            f'<font color="{status_color}"><b>{dynamic_label}</b></font>',
-            ParagraphStyle('LoadStatus', parent=body_style, fontSize=14, alignment=TA_LEFT)
-        ))
+        delta_color = '#DC2626' if delta > 0.01 else '#2563EB' if delta < -0.01 else '#6B7280'
+        delta_sign = '+' if delta > 0 else ''
         
-        # Note: BHP/PEI numeric scores are hidden in Free ScoreCard (visual bars only)
-        # Numeric values are only shown in paid Full Report PDF
+        elements.append(Paragraph(
+            f'<font color="#2563EB"><b>Load Balance: {dynamic_label}</b></font>'
+            f'&nbsp;&nbsp;&nbsp;<font color="#2563EB" size="9">[{tilt_label}]</font>',
+            ParagraphStyle('LoadHeader', parent=body_style, fontSize=14, alignment=TA_LEFT)
+        ))
+        elements.append(Spacer(1, 0.1 * inch))
+        
+        # BHP vs PEI teeter-totter table
+        if pei_score or bhp_score:
+            lb_data = [
+                ['INTERNAL CAPACITY (BHP)', '⚖', 'ENVIRONMENTAL LOAD (PEI)'],
+                [f'{bhp_score:.3f}', f'Load Diff: {delta_sign}{delta:.3f}', f'{pei_score:.3f}'],
+            ]
+            lb_table = Table(lb_data, colWidths=[2.2 * inch, 1.6 * inch, 2.2 * inch])
+            lb_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('TEXTCOLOR', (0, 0), (0, 0), colors.HexColor('#8B5CF6')),
+                ('TEXTCOLOR', (1, 0), (1, 0), colors.HexColor('#D4A62A')),
+                ('TEXTCOLOR', (2, 0), (2, 0), colors.HexColor('#F87171')),
+                ('FONTNAME', (0, 1), (0, 1), 'Helvetica-Bold'),
+                ('FONTNAME', (2, 1), (2, 1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 1), (-1, 1), 12),
+                ('TEXTCOLOR', (0, 1), (0, 1), colors.HexColor('#8B5CF6')),
+                ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor(delta_color)),
+                ('FONTSIZE', (1, 1), (1, 1), 9),
+                ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor('#F87171')),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            elements.append(lb_table)
+        elements.append(Spacer(1, 0.05 * inch))
+        
+        # Classification chips
+        chips_text = (
+            f'<font size="9"><b>Load State:</b> {dynamic_label} &nbsp; | &nbsp; '
+            f'<b>System Status:</b> {tilt_label} &nbsp; | &nbsp; '
+            f'<b>Pressure Level:</b> {pressure_level}</font>'
+        )
+        elements.append(Paragraph(chips_text, ParagraphStyle(
+            'Chips', parent=body_style, fontSize=9, textColor=colors.HexColor('#6B7280')
+        )))
         
         if load_msg:
-            elements.append(Paragraph(load_msg, body_style))
+            elements.append(Paragraph(
+                f'<i>{load_msg}</i>',
+                ParagraphStyle('LoadMsg', parent=body_style, fontSize=11,
+                             textColor=colors.HexColor('#4B5563'), alignment=TA_CENTER)
+            ))
         
-        # AI-Generated Executive Summary (Item 4)
+        # AI-Generated Executive Summary
         if executive_summary:
             elements.append(Spacer(1, 0.1 * inch))
             summary_style = ParagraphStyle(
@@ -374,12 +420,15 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         return None
 
 
-def generate_pdf_report(assessment_data: dict) -> Optional[bytes]:
+def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = None) -> Optional[bytes]:
     """
     Generate a PDF report from assessment data.
     
     Args:
         assessment_data: Complete assessment output JSON
+        lens_override: Optional lens to use for report generation (PERSONAL_LIFESTYLE, 
+                      STUDENT_SUCCESS, PROFESSIONAL_LEADERSHIP, FAMILY_ECOSYSTEM, FULL_GALAXY).
+                      If provided, overrides the original report_type in metadata.
     
     Returns:
         PDF file as bytes, or None if generation fails
@@ -455,7 +504,11 @@ def generate_pdf_report(assessment_data: dict) -> Optional[bytes]:
         elements.append(Spacer(1, 0.2*inch))
         
         # Report Info - fetch user name
-        report_type = metadata.get('report_type', '').replace('_', ' ').title()
+        # Use lens_override if provided, otherwise use original report_type
+        original_report_type = metadata.get('report_type', '')
+        active_lens = lens_override if lens_override else original_report_type
+        report_type = active_lens.replace('_', ' ').title()
+        
         timestamp = metadata.get('timestamp', datetime.now().isoformat())
         date_str = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).strftime('%B %d, %Y at %I:%M %p')
         
@@ -468,10 +521,19 @@ def generate_pdf_report(assessment_data: dict) -> Optional[bytes]:
         # Professional header with divider
         elements.append(HRFlowable(width="100%", thickness=3, color=colors.HexColor('#4F46E5'), spaceAfter=16))
         
+        # Display lens-specific report type
+        lens_display_name = {
+            'PERSONAL_LIFESTYLE': 'Personal / Lifestyle',
+            'STUDENT_SUCCESS': 'Student Success',
+            'PROFESSIONAL_LEADERSHIP': 'Professional / Leadership',
+            'FAMILY_ECOSYSTEM': 'Family Ecosystem',
+            'FULL_GALAXY': 'Full Galaxy Report',
+        }.get(active_lens, report_type)
+        
         info_data = [
             ['Prepared for:', user_name],
             ['Report Date:', date_str],
-            ['Report Type:', report_type],
+            ['Report Lens:', lens_display_name],
             ['Assessment Type:', 'Full Galaxy Report (Paid)'],
         ]
         info_table = Table(info_data, colWidths=[2*inch, 4*inch])

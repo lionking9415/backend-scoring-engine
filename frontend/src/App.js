@@ -15,6 +15,7 @@ function App() {
   const [demographics, setDemographics] = useState(null);
   const [savedResult, setSavedResult] = useState(null);
   const [user, setUser] = useState(null);
+  const [loadingReport, setLoadingReport] = useState(false);
 
   // Check URL path, user session, and localStorage on mount
   useEffect(() => {
@@ -119,11 +120,38 @@ function App() {
     }
   };
 
-  const handleViewSavedResult = () => {
+  const handleViewSavedResult = async () => {
     if (savedResult) {
-      setAssessmentData(savedResult.data);
-      setAssessmentId(savedResult.resultId);
-      setCurrentView('results');
+      setLoadingReport(true);
+      try {
+        let reportData = savedResult.data;
+        
+        // Check if this is a free report (tier === 'free' or has constellation field)
+        const isFreeReport = reportData.tier === 'free' || reportData.constellation;
+        
+        // If it's stored as full format but should be free, convert to scorecard
+        if (!isFreeReport && !reportData.constellation) {
+          // This is a full report stored in localStorage, check if it needs conversion
+          try {
+            const scorecardResponse = await axios.post('/api/v1/convert-to-scorecard', reportData);
+            if (scorecardResponse.data.success) {
+              reportData = scorecardResponse.data.data;
+            }
+          } catch (conversionErr) {
+            console.error('Failed to convert to scorecard format:', conversionErr);
+            // Use full data anyway
+          }
+        }
+        
+        setAssessmentData(reportData);
+        setAssessmentId(savedResult.resultId);
+        setCurrentView('results');
+      } catch (err) {
+        console.error('Failed to load saved result:', err);
+        alert('Failed to load saved result. Please try again.');
+      } finally {
+        setLoadingReport(false);
+      }
     }
   };
 
@@ -139,6 +167,7 @@ function App() {
   };
 
   const handleViewReport = async (reportId, paymentStatus) => {
+    setLoadingReport(true);
     try {
       const response = await axios.get(`/api/v1/results/${reportId}`);
       if (response.data.success) {
@@ -170,6 +199,8 @@ function App() {
     } catch (err) {
       console.error('Failed to load report:', err);
       alert('Failed to load report. Please try again.');
+    } finally {
+      setLoadingReport(false);
     }
   };
 
@@ -190,8 +221,9 @@ function App() {
       )}
 
       {currentView === 'welcome' && (
-        <div className="flex items-center justify-center min-h-screen p-4">
-          <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-8">
+        <>
+          <div className="flex items-center justify-center min-h-screen p-4">
+            <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-8">
             {user && (
               <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
                 <div>
@@ -271,7 +303,19 @@ function App() {
               )}
             </div>
           </div>
-        </div>
+          </div>
+          {loadingReport && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md mx-4">
+                <div className="flex flex-col items-center">
+                  <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mb-4"></div>
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">Loading Your Report</h3>
+                  <p className="text-gray-600 text-center">Please wait while we retrieve your assessment data...</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {currentView === 'demographics' && (
@@ -303,11 +347,24 @@ function App() {
       )}
 
       {currentView === 'my-reports' && (
-        <MyReports 
-          userEmail={user?.email}
-          onViewReport={handleViewReport}
-          onBack={() => setCurrentView('welcome')}
-        />
+        <>
+          <MyReports 
+            userEmail={user?.email}
+            onViewReport={handleViewReport}
+            onBack={() => setCurrentView('welcome')}
+          />
+          {loadingReport && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md mx-4">
+                <div className="flex flex-col items-center">
+                  <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mb-4"></div>
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">Loading Your Report</h3>
+                  <p className="text-gray-600 text-center">Please wait while we retrieve your assessment data...</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
     </div>
