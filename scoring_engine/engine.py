@@ -36,6 +36,7 @@ from scoring_engine.scoring import (
     aggregate_by_construct,
     aggregate_indices_by_domain_weights,
     compute_domain_construct_balance,
+    aggregate_aims_functions,
 )
 from scoring_engine.applied_domains import compute_applied_domains
 from scoring_engine.archetypes import assign_archetype
@@ -138,19 +139,31 @@ def process_assessment(
     domain_scores = aggregate_by_domain(scored_items)
 
     # -------------------------------------------------------------------------
-    # Step 4b: Compute PEI & BHP indices via overlapping domain weight matrix
-    # This is the key architectural feature: domains contribute to BOTH
-    # indices with DIFFERENT configurable weights.
+    # Step 4b: Compute PEI & BHP indices.
+    #
+    # PRIMARY (spec-faithful, Phase 1 Section 3 §3.8 L103-114):
+    #   PEI_score = average(normalized_score) over all PEI items
+    #   BHP_score = average(normalized_score) over all BHP items
+    # AIMS function items are excluded (categorical, not severity).
+    #
+    # SECONDARY (overlapping domain weight matrix — alternative roll-up that
+    # lets a domain contribute to BOTH indices with DIFFERENT weights, useful
+    # for diagnostics / exploration). Surfaced on the output as
+    # `PEI_score_by_domain_matrix` / `BHP_score_by_domain_matrix` so analysts
+    # can compare the two views without affecting the canonical scores.
     # -------------------------------------------------------------------------
-    construct_scores = aggregate_indices_by_domain_weights(domain_scores)
-
-    # Also compute per-item construct aggregation (legacy / transparency)
     construct_scores_by_item = aggregate_by_construct(scored_items)
-    construct_scores["PEI_score_by_item"] = construct_scores_by_item.get("PEI_score", 0.0)
-    construct_scores["BHP_score_by_item"] = construct_scores_by_item.get("BHP_score", 0.0)
+    construct_scores_by_matrix = aggregate_indices_by_domain_weights(domain_scores)
 
-    pei_score = construct_scores.get("PEI_score", 0.0)
-    bhp_score = construct_scores.get("BHP_score", 0.0)
+    construct_scores = {
+        "PEI_score": construct_scores_by_item.get("PEI_score", 0.0),
+        "BHP_score": construct_scores_by_item.get("BHP_score", 0.0),
+        "PEI_score_by_domain_matrix": construct_scores_by_matrix.get("PEI_score", 0.0),
+        "BHP_score_by_domain_matrix": construct_scores_by_matrix.get("BHP_score", 0.0),
+    }
+
+    pei_score = construct_scores["PEI_score"]
+    bhp_score = construct_scores["BHP_score"]
 
     # -------------------------------------------------------------------------
     # Step 5: Compute PEI × BHP framework (Section 4)
@@ -172,6 +185,14 @@ def process_assessment(
     # Financial EF + Health & Fitness EF — standalone derived domains
     # -------------------------------------------------------------------------
     applied_domains = compute_applied_domains(subdomain_scores, domain_construct_balance)
+
+    # -------------------------------------------------------------------------
+    # Step 6d: Aggregate AIMS function distribution
+    # AIMS items are categorical (Attention/Sensory/Escape/Overwhelm) and are
+    # NOT included in PEI/BHP/domain means. They are surfaced separately so
+    # the AIMS intervention plan can target the user's primary function.
+    # -------------------------------------------------------------------------
+    aims_function_distribution = aggregate_aims_functions(scored_items)
 
     # -------------------------------------------------------------------------
     # Step 7: Build domain profiles (Section 5.12)
@@ -212,6 +233,7 @@ def process_assessment(
     # Step 9b: Attach Applied EF Domains (Phase 4)
     # -------------------------------------------------------------------------
     output["applied_domains"] = applied_domains
+    output["aims_function_distribution"] = aims_function_distribution
 
     # -------------------------------------------------------------------------
     # Step 9b2: Compute Cross-Domain Pattern Layer (Phase 4.5)

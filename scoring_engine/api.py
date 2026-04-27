@@ -12,10 +12,21 @@ Endpoints:
 import logging
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from scoring_engine.access_control import (
+    ALL_PRODUCTS,
+    LENS_PRODUCTS,
+    get_paid_products,
+    has_any_premium_unlock,
+    is_product_paid,
+    require_admin,
+    require_any_paid,
+    require_paid_product,
+    unlock_products,
+)
 from scoring_engine.config import REPORT_LENSES, SYSTEM_ID, DISPLAY_NAME
 from scoring_engine.engine import process_assessment
 from scoring_engine.validation import ValidationError
@@ -34,14 +45,17 @@ class ResponseItem(BaseModel):
 
 
 class AssessmentRequest(BaseModel):
-    """Assessment submission payload."""
+    """Assessment submission payload.
+
+    The output tier is determined **server-side** from the assessment's payment
+    state, not from the client. New assessments always start free.
+    """
     user_id: str = Field(..., description="Unique user identifier")
     user_email: Optional[str] = Field(None, description="User email address")
     report_type: str = Field(..., description="Report lens (e.g. STUDENT_SUCCESS)")
     responses: list[ResponseItem] = Field(..., min_length=1, description="Assessment responses")
     demographics: Optional[dict] = Field(None, description="Optional demographic metadata")
     include_interpretation: bool = Field(True, description="Include AI narrative layer")
-    tier: str = Field("free", description="Output tier: 'free' (ScoreCard) or 'paid' (Full Report)")
     use_ai: bool = Field(False, description="Use OpenAI for interpretation (Phase 2)")
 
 
@@ -182,12 +196,12 @@ def create_app(use_database: bool = False) -> FastAPI:
             result_id = str(uuid.uuid4())
             memory_store[result_id] = result
 
-        # Return appropriate tier output
-        if request.tier == "free":
-            from scoring_engine.output import build_scorecard_output
-            response_data = build_scorecard_output(result)
-        else:
-            response_data = result
+        # Tier is decided by the server based on this assessment's payment
+        # status. A brand-new assessment is always free. Paid output is only
+        # returned via /api/v1/results/{id} after a successful unlock, never
+        # directly from /assess.
+        from scoring_engine.output import build_scorecard_output
+        response_data = build_scorecard_output(result)
 
         return AssessmentResponse(
             success=True,
@@ -197,22 +211,46 @@ def create_app(use_database: bool = False) -> FastAPI:
 
     @app.get("/api/v1/results/{result_id}")
     def get_result(result_id: str):
-        """Retrieve a stored assessment result by ID."""
-        # Try Supabase first
+        """Retrieve a stored assessment result by ID.
+
+        Returns the FREE ScoreCard projection unless the assessment has been
+        unlocked. If at least one lens (or the cosmic bundle) has been
+        purchased, the full output is returned along with a `paid_products`
+        list so the frontend can render only the unlocked sections.
+        """
+        data = None
+
         if db_available:
             try:
                 from scoring_engine.database import get_result_by_id
                 data = get_result_by_id(result_id)
-                if data is not None:
-                    return {"success": True, "data": data}
             except Exception as e:
                 logger.error(f"Supabase lookup failed: {e}")
 
-        # Fallback to memory store
-        if result_id in memory_store:
-            return {"success": True, "data": memory_store[result_id]}
+        if data is None and result_id in memory_store:
+            data = memory_store[result_id]
 
-        raise HTTPException(status_code=404, detail=f"Result '{result_id}' not found")
+        if data is None:
+            raise HTTPException(
+                status_code=404, detail=f"Result '{result_id}' not found"
+            )
+
+        paid_products = get_paid_products(result_id)
+        if not paid_products:
+            from scoring_engine.output import build_scorecard_output
+            return {
+                "success": True,
+                "tier": "free",
+                "paid_products": [],
+                "data": build_scorecard_output(data),
+            }
+
+        return {
+            "success": True,
+            "tier": "paid",
+            "paid_products": paid_products,
+            "data": data,
+        }
 
     @app.get("/api/v1/results/user/{user_id}")
     def get_user_results(user_id: str):
@@ -321,22 +359,34 @@ def create_app(use_database: bool = False) -> FastAPI:
     def create_checkout(
         assessment_id: str,
         customer_email: str,
+        product: str = "COSMIC_BUNDLE",
         success_url: str = "http://localhost:3000/success",
-        cancel_url: str = "http://localhost:3000/cancel"
+        cancel_url: str = "http://localhost:3000/cancel",
     ):
-        """Create Stripe checkout session for report unlock."""
+        """Create Stripe checkout session for a single product unlock.
+
+        `product` must be one of the SKUs defined in
+        `scoring_engine.access_control.ALL_PRODUCTS`.
+        """
         from scoring_engine.payment_service import create_checkout_session
-        
+
+        if product not in ALL_PRODUCTS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid product. Must be one of: {list(ALL_PRODUCTS)}",
+            )
+
         session = create_checkout_session(
             assessment_id=assessment_id,
             customer_email=customer_email,
             success_url=success_url,
-            cancel_url=cancel_url
+            cancel_url=cancel_url,
+            product=product,
         )
-        
+
         if not session:
             raise HTTPException(status_code=500, detail="Failed to create checkout session")
-        
+
         return {"success": True, "session": session}
 
     @app.post("/api/v1/payment/webhook")
@@ -345,71 +395,104 @@ def create_app(use_database: bool = False) -> FastAPI:
         from scoring_engine.payment_service import (
             verify_webhook_signature,
             process_payment_webhook,
-            unlock_report
         )
-        
+
         payload = await request.body()
         signature = request.headers.get("stripe-signature", "")
-        
+
         logger.info("Received Stripe webhook")
-        
-        # Verify signature
+
         if not verify_webhook_signature(payload, signature):
             logger.error("Webhook signature verification failed")
             raise HTTPException(status_code=400, detail="Invalid signature")
-        
+
         logger.info("Webhook signature verified")
-        
-        # Parse event
+
         import json
         event_data = json.loads(payload)
         event_type = event_data.get('type', 'unknown')
         logger.info(f"Processing webhook event type: {event_type}")
-        
-        # Process payment
+
         result = process_payment_webhook(event_data)
-        
+
         if result:
             logger.info(f"Payment processed successfully: {result}")
-            # Unlock report
-            unlock_success = unlock_report(result['assessment_id'], result['payment_id'])
+            product = result.get("product", "COSMIC_BUNDLE")
+            unlock_success = unlock_products(
+                result['assessment_id'],
+                [product],
+                payment_id=result['payment_id'],
+            )
             if unlock_success:
-                logger.info(f"✓ Report successfully unlocked for assessment {result['assessment_id']}")
+                logger.info(
+                    f"✓ Unlocked '{product}' for assessment {result['assessment_id']}"
+                )
             else:
-                logger.error(f"✗ Failed to unlock report for assessment {result['assessment_id']}")
+                logger.error(
+                    f"✗ Failed to unlock '{product}' for assessment {result['assessment_id']}"
+                )
         else:
-            logger.warning(f"No result from process_payment_webhook for event type: {event_type}")
-        
+            logger.warning(
+                f"No result from process_payment_webhook for event type: {event_type}"
+            )
+
         return {"success": True}
 
     @app.get("/api/v1/payment/status/{assessment_id}")
     def get_payment_status_endpoint(assessment_id: str):
-        """Get payment status for an assessment."""
-        from scoring_engine.payment_service import get_payment_status
-        
-        status = get_payment_status(assessment_id)
-        return {"success": True, "payment_status": status}
+        """Get payment status for an assessment.
 
-    @app.post("/api/v1/admin/mark-paid/{assessment_id}")
-    def admin_mark_paid(assessment_id: str, payment_id: str = "manual_admin_override"):
-        """Admin endpoint to manually mark a report as paid."""
-        from scoring_engine.payment_service import unlock_report
-        
-        logger.info(f"Admin manually marking assessment {assessment_id} as paid")
-        success = unlock_report(assessment_id, payment_id)
-        
+        Returns both the legacy single-string flag (for backwards
+        compatibility) and the granular `paid_products` list.
+        """
+        from scoring_engine.payment_service import get_payment_status
+
+        status = get_payment_status(assessment_id)
+        paid_products = get_paid_products(assessment_id)
+        return {
+            "success": True,
+            "payment_status": status,
+            "paid_products": paid_products,
+        }
+
+    @app.post(
+        "/api/v1/admin/mark-paid/{assessment_id}",
+        dependencies=[Depends(require_admin)],
+    )
+    def admin_mark_paid(
+        assessment_id: str,
+        product: str = "COSMIC_BUNDLE",
+        payment_id: str = "manual_admin_override",
+    ):
+        """Admin endpoint to manually unlock a product for an assessment.
+
+        Requires `X-Admin-Token` header. Defaults to unlocking the full
+        Cosmic bundle for backwards compatibility.
+        """
+        if product not in ALL_PRODUCTS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid product. Must be one of: {list(ALL_PRODUCTS)}",
+            )
+
+        logger.info(
+            f"Admin marking assessment {assessment_id} as paid for product {product}"
+        )
+        success = unlock_products(assessment_id, [product], payment_id=payment_id)
+
         if success:
             return {
-                "success": True, 
-                "message": f"Assessment {assessment_id} marked as paid",
+                "success": True,
+                "message": f"Assessment {assessment_id} unlocked for {product}",
                 "assessment_id": assessment_id,
-                "payment_id": payment_id
+                "product": product,
+                "payment_id": payment_id,
+                "paid_products": get_paid_products(assessment_id),
             }
-        else:
-            raise HTTPException(
-                status_code=500, 
-                detail=f"Failed to mark assessment {assessment_id} as paid"
-            )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to unlock {product} for assessment {assessment_id}",
+        )
 
     @app.post("/api/v1/convert-to-scorecard")
     def convert_to_scorecard(full_result: dict):
@@ -442,31 +525,23 @@ def create_app(use_database: bool = False) -> FastAPI:
         
         try:
             from scoring_engine.database import get_results_by_user
-            from scoring_engine.supabase_client import get_supabase_client
-            
+
             # Get user_id from email (since database stores by user_id which is email)
             logger.info(f"Fetching reports for user_email: {user_email}")
             reports = get_results_by_user(user_email)
             logger.info(f"Found {len(reports)} reports from database")
             
-            # Enrich with payment status
-            supabase = get_supabase_client()
+            # Enrich with payment status (legacy single string + per-product map)
             enriched_reports = []
             for report in reports:
-                # Fetch payment status
-                payment_result = supabase.table('assessment_results')\
-                    .select('payment_status, user_id')\
-                    .eq('id', report['id'])\
-                    .maybe_single()\
-                    .execute()
-                
-                payment_status = 'free'
-                if payment_result.data:
-                    payment_status = payment_result.data.get('payment_status', 'free')
-                
+                rid = report['id']
+                paid_products = get_paid_products(rid)
+                payment_status = 'paid' if paid_products else 'free'
+
                 enriched_reports.append({
                     **report,
-                    'payment_status': payment_status
+                    'payment_status': payment_status,
+                    'paid_products': paid_products,
                 })
             
             logger.info(f"Returning {len(enriched_reports)} enriched reports")
@@ -514,14 +589,47 @@ def create_app(use_database: bool = False) -> FastAPI:
         
         return result_data
 
+    def _verify_assessment_owner(result_data: dict, x_user_email: Optional[str], result_id: str) -> None:
+        """Soft ownership check.
+
+        If the caller supplies an X-User-Email header it MUST match the
+        assessment's owner. When the header is absent we fall through (the
+        free ScoreCard is intentionally shareable), but we log so abuse can
+        be spotted in audit. This blocks trivial UUID-guessing attacks where
+        the attacker has guessed an ID but isn't logged in as that user.
+        """
+        if not x_user_email:
+            return
+        owner = (
+            (result_data or {}).get('metadata', {}).get('user_email')
+            or (result_data or {}).get('metadata', {}).get('user_id')
+        )
+        if owner and owner.lower() != x_user_email.strip().lower():
+            logger.warning(
+                f"Owner mismatch on result {result_id}: caller={x_user_email}, owner={owner}"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have access to this assessment.",
+            )
+
     @app.get("/api/v1/export/scorecard-pdf/{result_id}")
-    def export_scorecard_pdf(result_id: str):
-        """Generate and download FREE ScoreCard PDF (matches web ScoreCard view)."""
+    def export_scorecard_pdf(
+        result_id: str,
+        x_user_email: Optional[str] = Header(None, alias="X-User-Email"),
+    ):
+        """Generate and download FREE ScoreCard PDF (matches web ScoreCard view).
+
+        The free ScoreCard is intentionally shareable. To block trivial
+        ID-guessing attacks, callers MAY supply X-User-Email; if present it
+        must match the assessment's owner.
+        """
         from fastapi.responses import Response
         from scoring_engine.pdf_service import generate_scorecard_pdf
         
         logger.info(f"ScoreCard PDF export requested for result_id: {result_id}")
         result_data = _fetch_result(result_id)
+        _verify_assessment_owner(result_data, x_user_email, result_id)
         
         logger.info(f"Generating ScoreCard PDF for result_id: {result_id}")
         try:
@@ -547,22 +655,26 @@ def create_app(use_database: bool = False) -> FastAPI:
     @app.get("/api/v1/export/pdf/{result_id}")
     def export_pdf(result_id: str, lens: Optional[str] = None):
         """Generate and download Full Report PDF (paid tier).
-        
-        Args:
-            result_id: Assessment result ID
-            lens: Optional lens to generate (PERSONAL_LIFESTYLE, STUDENT_SUCCESS, 
-                  PROFESSIONAL_LEADERSHIP, FAMILY_ECOSYSTEM, FULL_GALAXY).
-                  If not provided, uses the original report_type from metadata.
+
+        Requires the requested lens (or any lens if `lens` is None) to be
+        unlocked for this assessment.
         """
         from fastapi.responses import Response
         from scoring_engine.pdf_service import generate_pdf_report
-        
+
         logger.info(f"Full Report PDF export requested for result_id: {result_id}, lens: {lens}")
         result_data = _fetch_result(result_id)
-        
-        # Use provided lens or fall back to original report_type
+
         original_report_type = result_data.get('metadata', {}).get('report_type')
         report_type = lens if lens else original_report_type
+
+        # Paywall: require the specific lens (or any lens if unspecified)
+        if report_type and report_type in LENS_PRODUCTS:
+            require_paid_product(result_id, report_type)
+        elif report_type == "FULL_GALAXY":
+            require_paid_product(result_id, "COSMIC_BUNDLE")
+        else:
+            require_any_paid(result_id, LENS_PRODUCTS + ("COSMIC_BUNDLE",))
         
         logger.info(f"Generating Full Report PDF for result_id: {result_id}, report_type: {report_type} (original: {original_report_type})")
         try:
@@ -593,7 +705,11 @@ def create_app(use_database: bool = False) -> FastAPI:
 
     @app.get("/api/v1/export/ai-report-pdf/{report_id}")
     def export_ai_report_pdf(report_id: str):
-        """Generate and download PDF for an AI-generated lens or Cosmic report."""
+        """Generate and download PDF for an AI-generated lens or Cosmic report.
+
+        Requires the underlying lens (or COSMIC_BUNDLE for FULL_GALAXY) to be
+        paid for the report's parent assessment.
+        """
         from fastapi.responses import Response
         from scoring_engine.pdf_service import generate_ai_report_pdf
         from scoring_engine.report_generator import get_report
@@ -608,6 +724,18 @@ def create_app(use_database: bool = False) -> FastAPI:
         report_type = report.get("report_type", "PERSONAL_LIFESTYLE")
         user_id = report.get("user_id")
         generated_at = report.get("generated_at")
+        assessment_id = report.get("assessment_id")
+
+        # Paywall on the parent assessment.
+        if assessment_id:
+            if report_type == "FULL_GALAXY":
+                require_paid_product(assessment_id, "COSMIC_BUNDLE")
+            elif report_type in LENS_PRODUCTS:
+                require_paid_product(assessment_id, report_type)
+            else:
+                require_any_paid(
+                    assessment_id, LENS_PRODUCTS + ("COSMIC_BUNDLE",)
+                )
 
         pdf_bytes = generate_ai_report_pdf(
             report_sections=sections,
@@ -724,6 +852,9 @@ def create_app(use_database: bool = False) -> FastAPI:
                 detail=f"report_type must be one of: {valid_types}",
             )
 
+        # Paywall: require this lens (or the cosmic bundle, which includes it).
+        require_paid_product(assessment_id, report_type)
+
         # Fetch assessment data
         assessment_data = _fetch_result(assessment_id)
 
@@ -770,26 +901,80 @@ def create_app(use_database: bool = False) -> FastAPI:
 
     @app.get("/api/v1/reports/{report_id}")
     def get_generated_report(report_id: str):
-        """Retrieve a generated AI report by ID."""
+        """Retrieve a generated AI report by ID.
+
+        Returns full sections only if the parent assessment has paid for the
+        relevant SKU. Otherwise returns metadata + a 'locked' flag so the
+        frontend can render a blurred preview.
+        """
         from scoring_engine.report_generator import get_report
 
         report = get_report(report_id)
         if not report:
             raise HTTPException(status_code=404, detail=f"Report '{report_id}' not found")
-        return {"success": True, "report": report}
+
+        report_type = report.get("report_type", "")
+        assessment_id = report.get("assessment_id")
+
+        required_product = (
+            "COSMIC_BUNDLE" if report_type == "FULL_GALAXY"
+            else report_type if report_type in LENS_PRODUCTS
+            else None
+        )
+
+        if required_product and assessment_id and not is_product_paid(
+            assessment_id, required_product
+        ):
+            return {
+                "success": True,
+                "locked": True,
+                "report": {
+                    "report_id": report.get("report_id"),
+                    "report_type": report_type,
+                    "user_id": report.get("user_id"),
+                    "assessment_id": assessment_id,
+                    "generated_at": report.get("generated_at"),
+                    "required_product": required_product,
+                },
+            }
+
+        return {"success": True, "locked": False, "report": report}
 
     @app.get("/api/v1/reports/user/{user_id}/assessment/{assessment_id}")
     def get_user_assessment_reports(user_id: str, assessment_id: str):
-        """Get all generated reports for a user's assessment."""
-        from scoring_engine.report_generator import get_user_lens_reports, get_user_lens_report_ids
+        """Get all generated reports for a user's assessment.
+
+        Sections are only returned for SKUs that have been paid; locked lenses
+        are surfaced as `{ <LENS>: null }` so the frontend can render a teaser.
+        """
+        from scoring_engine.report_generator import (
+            get_user_lens_reports,
+            get_user_lens_report_ids,
+        )
 
         reports = get_user_lens_reports(user_id, assessment_id)
         report_ids = get_user_lens_report_ids(user_id, assessment_id)
+        paid_products = get_paid_products(assessment_id)
+
+        gated_reports: dict = {}
+        for lens, sections in reports.items():
+            required = (
+                "COSMIC_BUNDLE" if lens == "FULL_GALAXY"
+                else lens if lens in LENS_PRODUCTS
+                else None
+            )
+            if required and required not in paid_products and \
+                    not (lens in LENS_PRODUCTS and "COSMIC_BUNDLE" in paid_products):
+                gated_reports[lens] = None
+            else:
+                gated_reports[lens] = sections
+
         return {
             "success": True,
-            "reports": reports,
+            "reports": gated_reports,
             "report_ids": report_ids,
-            "lens_count": len(reports),
+            "paid_products": paid_products,
+            "lens_count": sum(1 for v in gated_reports.values() if v),
         }
 
     # -----------------------------------------------------------------
@@ -798,14 +983,44 @@ def create_app(use_database: bool = False) -> FastAPI:
 
     @app.get("/api/v1/cosmic/eligibility/{user_id}/{assessment_id}")
     def check_cosmic_eligibility_endpoint(user_id: str, assessment_id: str):
-        """Check if user has all 4 lenses to unlock the Cosmic Integration Report."""
+        """Check if user can unlock the Cosmic Integration Report.
+
+        Two requirements:
+          1. Generation requirement: all 4 lens reports must already exist.
+          2. Payment requirement: the COSMIC_BUNDLE SKU must be paid OR all
+             4 lens SKUs must be paid individually.
+        """
         from scoring_engine.report_generator import check_cosmic_eligibility
-        result = check_cosmic_eligibility(user_id, assessment_id)
-        return {"success": True, **result}
+
+        gen = check_cosmic_eligibility(user_id, assessment_id)
+
+        paid_products = get_paid_products(assessment_id)
+        cosmic_paid = "COSMIC_BUNDLE" in paid_products
+        all_lenses_paid = all(p in paid_products for p in LENS_PRODUCTS)
+        payment_eligible = cosmic_paid or all_lenses_paid
+
+        return {
+            "success": True,
+            **gen,
+            "payment_eligible": payment_eligible,
+            "paid_products": paid_products,
+            "eligible": gen["eligible"] and payment_eligible,
+            "generation_eligible": gen["eligible"],
+            "message": (
+                "Cosmic Integration unlocked."
+                if gen["eligible"] and payment_eligible
+                else "Generate all 4 lens reports and purchase the Cosmic bundle."
+                if not gen["eligible"] and not payment_eligible
+                else "Generate all 4 lens reports first."
+                if not gen["eligible"]
+                else "Purchase the Cosmic bundle to unlock the integration report."
+            ),
+        }
 
     @app.get("/api/v1/cosmic/report/{user_id}/{assessment_id}")
     def get_cosmic_report(user_id: str, assessment_id: str):
         """Retrieve a previously generated FULL_GALAXY (cosmic) report."""
+        require_paid_product(assessment_id, "COSMIC_BUNDLE")
         try:
             from scoring_engine.supabase_client import get_supabase_client
             client = get_supabase_client()
@@ -858,12 +1073,18 @@ def create_app(use_database: bool = False) -> FastAPI:
                 detail="assessment_id and user_id are required",
             )
 
-        # Check eligibility
+        # Paywall: Cosmic synthesis requires the COSMIC_BUNDLE SKU.
+        require_paid_product(assessment_id, "COSMIC_BUNDLE")
+
+        # Generation eligibility: all 4 lens reports must exist.
         eligibility = check_cosmic_eligibility(user_id, assessment_id)
         if not eligibility["eligible"]:
             raise HTTPException(
                 status_code=400,
-                detail=f"Cosmic Integration requires all 4 lenses. Missing: {eligibility['missing_lenses']}",
+                detail=(
+                    "Cosmic Integration requires all 4 lens reports to be "
+                    f"generated first. Missing: {eligibility['missing_lenses']}"
+                ),
             )
 
         # Fetch assessment data
@@ -944,6 +1165,8 @@ def create_app(use_database: bool = False) -> FastAPI:
         if not assessment_id or not user_id:
             raise HTTPException(status_code=400, detail="assessment_id and user_id are required")
 
+        require_paid_product(assessment_id, "FINANCIAL_DEEP_DIVE")
+
         assessment_data = _fetch_result(assessment_id)
         meta = assessment_data.get("metadata", {})
         demographics = _resolve_demographics(user_id, assessment_id, meta, request.get("demographics"))
@@ -972,6 +1195,8 @@ def create_app(use_database: bool = False) -> FastAPI:
         user_id = request.get("user_id")
         if not assessment_id or not user_id:
             raise HTTPException(status_code=400, detail="assessment_id and user_id are required")
+
+        require_paid_product(assessment_id, "HEALTH_DEEP_DIVE")
 
         assessment_data = _fetch_result(assessment_id)
         meta = assessment_data.get("metadata", {})
@@ -1015,6 +1240,23 @@ def create_app(use_database: bool = False) -> FastAPI:
                 detail="assessment_a_id and assessment_b_id are required",
             )
 
+        # Either side having paid for COMPATIBILITY unlocks the joint report.
+        if not (
+            is_product_paid(a_id, "COMPATIBILITY")
+            or is_product_paid(b_id, "COMPATIBILITY")
+        ):
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error": "payment_required",
+                    "product": "COMPATIBILITY",
+                    "message": (
+                        "Compatibility Report requires the COMPATIBILITY "
+                        "unlock on at least one of the two assessments."
+                    ),
+                },
+            )
+
         try:
             assessment_a = _fetch_result(a_id)
             assessment_b = _fetch_result(b_id)
@@ -1054,6 +1296,8 @@ def create_app(use_database: bool = False) -> FastAPI:
         """
         from fastapi.responses import Response
         from scoring_engine.pdf_service import generate_cosmic_dashboard_pdf
+
+        require_paid_product(assessment_id, "COSMIC_BUNDLE")
 
         try:
             assessment_data = _fetch_result(assessment_id)
@@ -1114,13 +1358,16 @@ def create_app(use_database: bool = False) -> FastAPI:
     # AI Audit Log Endpoints
     # -----------------------------------------------------------------
 
-    @app.get("/api/v1/audit/logs")
+    @app.get(
+        "/api/v1/audit/logs",
+        dependencies=[Depends(require_admin)],
+    )
     def list_audit_logs(
         user_id: Optional[str] = None,
         assessment_id: Optional[str] = None,
         limit: int = 50,
     ):
-        """List recent AI prompt/response audit log entries (admin/QA tool)."""
+        """List recent AI prompt/response audit log entries (admin only)."""
         from scoring_engine import audit
         return {
             "success": True,
@@ -1131,9 +1378,12 @@ def create_app(use_database: bool = False) -> FastAPI:
             ),
         }
 
-    @app.get("/api/v1/audit/summary")
+    @app.get(
+        "/api/v1/audit/summary",
+        dependencies=[Depends(require_admin)],
+    )
     def audit_summary():
-        """Aggregate stats over the in-memory audit buffer."""
+        """Aggregate stats over the in-memory audit buffer (admin only)."""
         from scoring_engine import audit
         return {"success": True, "summary": audit.get_audit_summary()}
 

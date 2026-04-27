@@ -90,17 +90,29 @@ def assign_load_state(load_balance: float) -> str:
 
 def get_load_balance_status(load_balance: float) -> str:
     """
-    Simplified load balance for the FREE ScoreCard.
-    Returns a plain-language status instead of the technical load_state.
+    Simplified load balance label for the FREE ScoreCard.
+
+    Maps the technical 5-band load_state to plain-language labels per
+    `docs/🌌 Phase 1-Final Steps.md` §Load Balance Snapshot. We preserve the
+    Surplus signal as a separate label (rather than collapsing it into
+    "Balanced") so users with strong capacity reserves see a positive
+    descriptor instead of a neutral one.
+
+    Bands (load_balance = BHP - PEI):
+      ≥ +0.20            → "Surplus Capacity"
+      +0.05 .. +0.19      → "Balanced"
+      -0.04 ..  +0.04     → "Balanced"
+      -0.19 ..  -0.05     → "Slightly Imbalanced"
+      ≤ -0.20            → "High Load Strain"
     """
-    if load_balance >= 0.05:
+    if load_balance >= 0.20:
+        return "Surplus Capacity"
+    if load_balance >= -0.04:
+        # Covers Stable_Capacity (+0.05..+0.19) and Balanced_Load (-0.04..+0.04)
         return "Balanced"
-    elif load_balance >= -0.04:
-        return "Balanced"
-    elif load_balance >= -0.19:
+    if load_balance >= -0.19:
         return "Slightly Imbalanced"
-    else:
-        return "High Load Strain"
+    return "High Load Strain"
 
 
 def compute_framework(pei_score: float, bhp_score: float,

@@ -49,35 +49,53 @@ def create_checkout_session(
     assessment_id: str,
     customer_email: str,
     success_url: str,
-    cancel_url: str
+    cancel_url: str,
+    product: str = "COSMIC_BUNDLE",
 ) -> Optional[dict]:
     """
-    Create a Stripe checkout session for report unlock.
+    Create a Stripe checkout session for a single product unlock.
     
     Args:
         assessment_id: UUID of the assessment to unlock
         customer_email: User's email address
         success_url: URL to redirect after successful payment
         cancel_url: URL to redirect if payment is cancelled
+        product: Which SKU is being purchased. One of:
+            PERSONAL_LIFESTYLE, STUDENT_SUCCESS, PROFESSIONAL_LEADERSHIP,
+            FAMILY_ECOSYSTEM, COSMIC_BUNDLE, FINANCIAL_DEEP_DIVE,
+            HEALTH_DEEP_DIVE, COMPATIBILITY.
     
     Returns:
         Dictionary with session_id and checkout_url, or None if creation fails
     """
+    from scoring_engine.access_control import (
+        ALL_PRODUCTS,
+        get_price_id_for_product,
+    )
+
+    if product not in ALL_PRODUCTS:
+        logger.error(f"Invalid product SKU '{product}'")
+        return None
+
     stripe = get_stripe_client()
     if not stripe:
         logger.warning("Stripe not configured - returning mock session")
         return {
             "session_id": "mock_session_id",
-            "checkout_url": f"{success_url}?mock=true",
-            "error": "Stripe not configured - payment disabled"
+            "checkout_url": f"{success_url}?mock=true&product={product}",
+            "error": "Stripe not configured - payment disabled",
+            "product": product,
         }
-    
+
     try:
-        price_id = os.getenv("STRIPE_PRICE_ID")
+        price_id = get_price_id_for_product(product)
         if not price_id:
-            logger.error("STRIPE_PRICE_ID not set")
+            logger.error(
+                f"No Stripe price configured for product '{product}' "
+                f"(set STRIPE_PRICE_ID_{product})"
+            )
             return None
-        
+
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
@@ -90,16 +108,21 @@ def create_checkout_session(
             customer_email=customer_email,
             metadata={
                 'assessment_id': assessment_id,
+                'product': product,
             },
         )
-        
-        logger.info(f"Created checkout session {session.id} for assessment {assessment_id}")
-        
+
+        logger.info(
+            f"Created checkout session {session.id} for assessment "
+            f"{assessment_id} (product={product})"
+        )
+
         return {
             "session_id": session.id,
-            "checkout_url": session.url
+            "checkout_url": session.url,
+            "product": product,
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to create checkout session: {e}")
         return None
@@ -149,19 +172,25 @@ def process_payment_webhook(event_data: dict) -> Optional[dict]:
     
     if event_type == 'checkout.session.completed':
         session = event_data.get('data', {}).get('object', {})
-        
-        assessment_id = session.get('metadata', {}).get('assessment_id')
+
+        metadata = session.get('metadata', {}) or {}
+        assessment_id = metadata.get('assessment_id')
+        product = metadata.get('product', 'COSMIC_BUNDLE')
         payment_intent = session.get('payment_intent')
         customer_email = session.get('customer_email')
-        
+
         if not assessment_id:
             logger.error("No assessment_id in webhook metadata")
             return None
-        
-        logger.info(f"Payment completed for assessment {assessment_id}")
-        
+
+        logger.info(
+            f"Payment completed for assessment {assessment_id} "
+            f"(product={product})"
+        )
+
         return {
             'assessment_id': assessment_id,
+            'product': product,
             'payment_id': payment_intent,
             'customer_email': customer_email,
             'status': 'paid'

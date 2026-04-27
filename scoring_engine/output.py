@@ -47,18 +47,21 @@ def build_output(
     """
 
     # Round all numeric values at final output stage (Section 3.14 / 6.10)
+    # Canonical PEI/BHP per Phase 1 Section 3 §3.8: simple per-item averages
+    # over PEI / BHP behavioral items (AIMS items excluded).
     rounded_construct = {
         "PEI_score": round(construct_scores.get("PEI_score", 0), OUTPUT_PRECISION),
         "BHP_score": round(construct_scores.get("BHP_score", 0), OUTPUT_PRECISION),
     }
-    # Include legacy per-item construct scores for transparency
-    if "PEI_score_by_item" in construct_scores:
-        rounded_construct["PEI_score_by_item"] = round(
-            construct_scores["PEI_score_by_item"], OUTPUT_PRECISION
+    # Alternative roll-up via the overlapping domain-weight matrix
+    # (diagnostic only — does not feed quadrant / archetype routing).
+    if "PEI_score_by_domain_matrix" in construct_scores:
+        rounded_construct["PEI_score_by_domain_matrix"] = round(
+            construct_scores["PEI_score_by_domain_matrix"], OUTPUT_PRECISION
         )
-    if "BHP_score_by_item" in construct_scores:
-        rounded_construct["BHP_score_by_item"] = round(
-            construct_scores["BHP_score_by_item"], OUTPUT_PRECISION
+    if "BHP_score_by_domain_matrix" in construct_scores:
+        rounded_construct["BHP_score_by_domain_matrix"] = round(
+            construct_scores["BHP_score_by_domain_matrix"], OUTPUT_PRECISION
         )
 
     rounded_framework = {
@@ -101,6 +104,7 @@ def build_output(
             "domain": item["domain"],
             "subdomain": item["subdomain"],
             "construct": item["construct"],
+            "item_type": item.get("item_type", "behavioral"),
             "raw_response": item["raw_response"],
             "direction": item["direction"],
             "adjusted_score": round(item["adjusted_score"], OUTPUT_PRECISION),

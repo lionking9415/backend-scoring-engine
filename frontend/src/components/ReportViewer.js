@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import UnlockGate from './UnlockGate';
 
 const SECTION_META = {
   galaxy_snapshot: { icon: '🌠', title: 'Galaxy Snapshot', color: '#6366F1' },
@@ -104,16 +105,25 @@ const SectionCard = ({ sectionKey, content, index }) => {
   );
 };
 
-const ReportViewer = ({ assessmentId, userEmail, onBack }) => {
+const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp = [], onBack }) => {
   const [reports, setReports] = useState({});
   const [reportIds, setReportIds] = useState({});
+  const [paidProducts, setPaidProducts] = useState(paidProductsProp);
   const [activeReport, setActiveReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [cosmicEligible, setCosmicEligible] = useState(false);
   const [cosmicMissing, setCosmicMissing] = useState([]);
+  const [cosmicPaymentEligible, setCosmicPaymentEligible] = useState(false);
   const [error, setError] = useState(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  const lensIsPaid = (lens) => {
+    if (!paidProducts) return false;
+    if (paidProducts.includes('COSMIC_BUNDLE')) return true;
+    return paidProducts.includes(lens);
+  };
+  const cosmicIsPaid = (paidProducts || []).includes('COSMIC_BUNDLE');
 
   useEffect(() => {
     loadReports();
@@ -126,11 +136,20 @@ const ReportViewer = ({ assessmentId, userEmail, onBack }) => {
     try {
       const res = await axios.get(`/api/v1/reports/user/${userEmail}/assessment/${assessmentId}`);
       if (res.data.success && res.data.reports) {
-        setReports(res.data.reports);
+        // Backend returns { LENS: sections } or { LENS: null } if locked.
+        // Strip null entries so they're treated as not-yet-generated, then
+        // remember which lenses the backend considers paid.
+        const cleaned = Object.fromEntries(
+          Object.entries(res.data.reports).filter(([, v]) => v && Object.keys(v).length > 0)
+        );
+        setReports(cleaned);
         if (res.data.report_ids) {
           setReportIds(res.data.report_ids);
         }
-        const keys = Object.keys(res.data.reports);
+        if (res.data.paid_products) {
+          setPaidProducts(res.data.paid_products);
+        }
+        const keys = Object.keys(cleaned);
         if (keys.length > 0 && !activeReport) {
           setActiveReport(keys[0]);
         }
@@ -140,6 +159,10 @@ const ReportViewer = ({ assessmentId, userEmail, onBack }) => {
       if (cosmicRes.data.success) {
         setCosmicEligible(cosmicRes.data.eligible);
         setCosmicMissing(cosmicRes.data.missing_lenses || []);
+        setCosmicPaymentEligible(!!cosmicRes.data.payment_eligible);
+        if (cosmicRes.data.paid_products) {
+          setPaidProducts(cosmicRes.data.paid_products);
+        }
       }
     } catch (err) {
       console.error('Failed to load reports:', err);
@@ -149,8 +172,33 @@ const ReportViewer = ({ assessmentId, userEmail, onBack }) => {
   };
 
   const generateReport = async (reportType) => {
-    setGenerating(true);
     setError(null);
+
+    // Paywall: if this lens isn't unlocked, send the user to Stripe instead
+    // of attempting a backend call that will return 402.
+    if (!lensIsPaid(reportType)) {
+      try {
+        const res = await axios.post('/api/v1/payment/create-checkout', null, {
+          params: {
+            assessment_id: assessmentId,
+            customer_email: userEmail,
+            product: reportType,
+            success_url: `${window.location.origin}/success?assessment_id=${assessmentId}&product=${reportType}`,
+            cancel_url: window.location.href,
+          },
+        });
+        if (res.data?.success && res.data.session?.checkout_url) {
+          window.location.href = res.data.session.checkout_url;
+          return;
+        }
+        setError(res.data?.session?.error || 'Failed to start checkout');
+      } catch (err) {
+        setError(err.response?.data?.detail || 'Failed to start checkout');
+      }
+      return;
+    }
+
+    setGenerating(true);
     try {
       const res = await axios.post('/api/v1/reports/generate', {
         assessment_id: assessmentId,
@@ -165,15 +213,38 @@ const ReportViewer = ({ assessmentId, userEmail, onBack }) => {
         setActiveReport(reportType);
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Report generation failed');
+      setError(err.response?.data?.detail?.message || err.response?.data?.detail || 'Report generation failed');
     } finally {
       setGenerating(false);
     }
   };
 
   const generateCosmicReport = async () => {
-    setGenerating(true);
     setError(null);
+
+    if (!cosmicIsPaid) {
+      try {
+        const res = await axios.post('/api/v1/payment/create-checkout', null, {
+          params: {
+            assessment_id: assessmentId,
+            customer_email: userEmail,
+            product: 'COSMIC_BUNDLE',
+            success_url: `${window.location.origin}/success?assessment_id=${assessmentId}&product=COSMIC_BUNDLE`,
+            cancel_url: window.location.href,
+          },
+        });
+        if (res.data?.success && res.data.session?.checkout_url) {
+          window.location.href = res.data.session.checkout_url;
+          return;
+        }
+        setError(res.data?.session?.error || 'Failed to start checkout');
+      } catch (err) {
+        setError(err.response?.data?.detail || 'Failed to start checkout');
+      }
+      return;
+    }
+
+    setGenerating(true);
     try {
       const res = await axios.post('/api/v1/cosmic/generate', {
         assessment_id: assessmentId,
@@ -188,7 +259,7 @@ const ReportViewer = ({ assessmentId, userEmail, onBack }) => {
         setCosmicEligible(true);
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Cosmic report generation failed');
+      setError(err.response?.data?.detail?.message || err.response?.data?.detail || 'Cosmic report generation failed');
     } finally {
       setGenerating(false);
     }
@@ -224,23 +295,35 @@ const ReportViewer = ({ assessmentId, userEmail, onBack }) => {
           if (key === 'FULL_GALAXY' && !reports[key] && !cosmicEligible) return null;
           const hasReport = !!reports[key];
           const isActive = activeReport === key;
+          const isLocked = key === 'FULL_GALAXY' ? !cosmicIsPaid : !lensIsPaid(key);
           return (
             <button
               key={key}
-              onClick={() => hasReport ? setActiveReport(key) : generateReport(key)}
+              onClick={() => hasReport
+                ? setActiveReport(key)
+                : key === 'FULL_GALAXY' ? generateCosmicReport() : generateReport(key)}
               disabled={generating}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all border-2 ${
                 isActive
                   ? 'border-indigo-600 bg-indigo-600 text-white shadow-md'
                   : hasReport
                     ? 'border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50'
-                    : 'border-dashed border-gray-300 bg-white text-gray-500 hover:border-indigo-300 hover:text-indigo-600'
+                    : isLocked
+                      ? 'border-dashed border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                      : 'border-dashed border-gray-300 bg-white text-gray-500 hover:border-indigo-300 hover:text-indigo-600'
               }`}
             >
               <span>{lens.icon}</span>
               <span>{lens.label}</span>
               {!hasReport && key !== 'FULL_GALAXY' && (
-                <span className="text-xs opacity-70">+ Generate</span>
+                isLocked ? (
+                  <span className="text-xs opacity-80">🔒 Unlock</span>
+                ) : (
+                  <span className="text-xs opacity-70">+ Generate</span>
+                )
+              )}
+              {!hasReport && key === 'FULL_GALAXY' && isLocked && (
+                <span className="text-xs opacity-80">🔒 Unlock</span>
               )}
               {hasReport && <span className="text-xs opacity-70">✓</span>}
             </button>
@@ -251,7 +334,7 @@ const ReportViewer = ({ assessmentId, userEmail, onBack }) => {
       {/* Cosmic Integration Banner */}
       {!reports.FULL_GALAXY && (
         <div className={`mb-6 rounded-xl p-4 border-2 ${
-          cosmicEligible
+          cosmicEligible && cosmicPaymentEligible
             ? 'border-purple-300 bg-gradient-to-r from-purple-50 to-indigo-50'
             : 'border-gray-200 bg-gray-50'
         }`}>
@@ -261,14 +344,18 @@ const ReportViewer = ({ assessmentId, userEmail, onBack }) => {
               <h3 className="font-bold text-gray-800 text-sm">
                 Cosmic Integration Report™
               </h3>
-              {cosmicEligible ? (
-                <p className="text-xs text-purple-700 mt-0.5">
-                  All 4 lenses completed! Generate your unified cross-domain analysis.
+              {!cosmicEligible ? (
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Generate all 4 lens reports first. Missing:{' '}
+                  {cosmicMissing.map(m => LENS_LABELS[m]?.label || m).join(', ') || '—'}
+                </p>
+              ) : !cosmicPaymentEligible ? (
+                <p className="text-xs text-amber-700 mt-0.5">
+                  All 4 lenses generated. Purchase the Cosmic Bundle to unlock the integration synthesis.
                 </p>
               ) : (
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Complete all 4 lens reports to unlock. Missing:{' '}
-                  {cosmicMissing.map(m => LENS_LABELS[m]?.label || m).join(', ')}
+                <p className="text-xs text-purple-700 mt-0.5">
+                  All 4 lenses ready and Cosmic Bundle unlocked. Generate your unified cross-domain analysis.
                 </p>
               )}
             </div>
@@ -278,7 +365,11 @@ const ReportViewer = ({ assessmentId, userEmail, onBack }) => {
                 disabled={generating}
                 className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-bold rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-50"
               >
-                {generating ? 'Generating...' : 'Generate Cosmic Report'}
+                {generating
+                  ? 'Generating...'
+                  : cosmicPaymentEligible
+                    ? 'Generate Cosmic Report'
+                    : '🔒 Unlock Cosmic Bundle'}
               </button>
             )}
           </div>
@@ -383,22 +474,42 @@ const ReportViewer = ({ assessmentId, userEmail, onBack }) => {
         </div>
       )}
 
-      {/* Empty State */}
+      {/* Empty State (no reports generated yet) */}
       {!loading && !generating && !activeSections && Object.keys(reports).length === 0 && (
-        <div className="text-center py-16">
-          <span className="text-5xl mb-4 block">📊</span>
-          <h3 className="text-xl font-bold text-gray-800 mb-2">No Reports Yet</h3>
-          <p className="text-gray-500 text-sm mb-6">
-            Select a lens above to generate your first AI-powered report.
-          </p>
-          <button
-            onClick={() => generateReport('PERSONAL_LIFESTYLE')}
-            disabled={generating}
-            className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all"
+        (paidProducts || []).length === 0 ? (
+          <UnlockGate
+            product="PERSONAL_LIFESTYLE"
+            title="AI Reports are a premium feature"
+            description="Unlock any lens to generate your personalized 15-section AI Executive Function report."
+            assessmentId={assessmentId}
+            userEmail={userEmail}
+            ctaLabel="Unlock Personal / Lifestyle Lens →"
           >
-            Generate Personal / Lifestyle Report
-          </button>
-        </div>
+            <div className="space-y-2">
+              <div className="h-4 bg-gray-300 rounded w-3/4"></div>
+              <div className="h-3 bg-gray-200 rounded w-full"></div>
+              <div className="h-3 bg-gray-200 rounded w-5/6"></div>
+              <div className="h-3 bg-gray-200 rounded w-4/6"></div>
+              <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+              <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+            </div>
+          </UnlockGate>
+        ) : (
+          <div className="text-center py-16">
+            <span className="text-5xl mb-4 block">📊</span>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">No Reports Yet</h3>
+            <p className="text-gray-500 text-sm mb-6">
+              Select a lens above to generate your first AI-powered report.
+            </p>
+            <button
+              onClick={() => generateReport((paidProducts || [])[0] || 'PERSONAL_LIFESTYLE')}
+              disabled={generating}
+              className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all"
+            >
+              Generate {LENS_LABELS[(paidProducts || [])[0]]?.label || 'Personal / Lifestyle'} Report
+            </button>
+          </div>
+        )
       )}
     </div>
   );

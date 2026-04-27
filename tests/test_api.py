@@ -31,6 +31,34 @@ def _make_response_payload(value=3, report_type="STUDENT_SUCCESS"):
     }
 
 
+def _submit_and_unlock(client, monkeypatch, payload, products=("STUDENT_SUCCESS",)):
+    """Submit an assessment and simulate a paid unlock for the given SKUs.
+
+    Returns the full paid result via GET /api/v1/results/{id}. Used by tests
+    that need to verify the full-output shape (interpretation, archetype,
+    construct_scores, etc.) — these are gated behind the paywall now that
+    the client-controlled `tier` field has been removed.
+    """
+    submit_resp = client.post("/api/v1/assess", json=payload)
+    assert submit_resp.status_code == 200, submit_resp.text
+    result_id = submit_resp.json()["result_id"]
+
+    paid_map = {result_id: list(products)}
+    fake = lambda aid: paid_map.get(aid, [])
+    # Patch BOTH the source module and the api.py-level rebind, since
+    # api.py imports get_paid_products by name at import time.
+    import scoring_engine.access_control as ac_mod
+    import scoring_engine.api as api_mod
+    monkeypatch.setattr(ac_mod, "get_paid_products", fake)
+    monkeypatch.setattr(api_mod, "get_paid_products", fake)
+
+    get_resp = client.get(f"/api/v1/results/{result_id}")
+    assert get_resp.status_code == 200, get_resp.text
+    body = get_resp.json()
+    assert body["tier"] == "paid", body
+    return body["data"], result_id
+
+
 class TestHealthEndpoint:
     """GET /api/v1/health"""
 
@@ -46,17 +74,10 @@ class TestHealthEndpoint:
 class TestAssessEndpoint:
     """POST /api/v1/assess"""
 
-    def test_submit_valid_assessment(self, client):
-        """Full 52-item submission should return scored output (paid tier)."""
+    def test_submit_valid_assessment(self, client, monkeypatch):
+        """Full 52-item submission, after unlock, should return full output."""
         payload = _make_response_payload(3)
-        payload["tier"] = "paid"
-        resp = client.post("/api/v1/assess", json=payload)
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["success"] is True
-        assert "result_id" in body
-        assert "data" in body
-        data = body["data"]
+        data, _ = _submit_and_unlock(client, monkeypatch, payload)
         assert "metadata" in data
         assert "construct_scores" in data
         assert "load_framework" in data
@@ -101,14 +122,11 @@ class TestAssessEndpoint:
         # Pydantic validation catches ge=1, le=7
         assert resp.status_code == 422
 
-    def test_submit_without_interpretation(self, client):
-        """Should work without interpretation layer."""
+    def test_submit_without_interpretation(self, client, monkeypatch):
+        """Should work without interpretation layer (paid path)."""
         payload = _make_response_payload(3)
         payload["include_interpretation"] = False
-        payload["tier"] = "paid"
-        resp = client.post("/api/v1/assess", json=payload)
-        assert resp.status_code == 200
-        data = resp.json()["data"]
+        data, _ = _submit_and_unlock(client, monkeypatch, payload)
         assert "interpretation" not in data
 
     def test_demographics_passthrough(self, client):
@@ -126,23 +144,23 @@ class TestAssessEndpoint:
             resp = client.post("/api/v1/assess", json=payload)
             assert resp.status_code == 200, f"Failed for lens: {lens}"
 
-    def test_construct_scores_have_both_methods(self, client):
-        """Output should include both domain-weighted and per-item index scores."""
+    def test_construct_scores_have_both_methods(self, client, monkeypatch):
+        """Paid output should include canonical (per-item) and domain-matrix indices."""
         payload = _make_response_payload(3)
-        payload["tier"] = "paid"
-        resp = client.post("/api/v1/assess", json=payload)
-        cs = resp.json()["data"]["construct_scores"]
+        data, _ = _submit_and_unlock(client, monkeypatch, payload)
+        cs = data["construct_scores"]
+        # Canonical: simple per-item average over PEI / BHP behavioral items
         assert "PEI_score" in cs
         assert "BHP_score" in cs
-        assert "PEI_score_by_item" in cs
-        assert "BHP_score_by_item" in cs
+        # Diagnostic: alternative roll-up via overlapping domain-weight matrix
+        assert "PEI_score_by_domain_matrix" in cs
+        assert "BHP_score_by_domain_matrix" in cs
 
-    def test_archetype_assigned(self, client):
-        """Archetype should be present in output (paid tier)."""
+    def test_archetype_assigned(self, client, monkeypatch):
+        """Archetype should be present in paid output."""
         payload = _make_response_payload(3)
-        payload["tier"] = "paid"
-        resp = client.post("/api/v1/assess", json=payload)
-        arch = resp.json()["data"]["archetype"]
+        data, _ = _submit_and_unlock(client, monkeypatch, payload)
+        arch = data["archetype"]
         assert "archetype_id" in arch
         assert "description" in arch
         assert "confidence" in arch

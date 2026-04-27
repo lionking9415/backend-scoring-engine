@@ -4,6 +4,7 @@ import LoadMatrix from './LoadMatrix';
 import LoadFlow from './LoadFlow';
 import StabilizersPanel from './StabilizersPanel';
 import AimsTrack from './AimsTrack';
+import UnlockGate from './UnlockGate';
 
 const COSMIC_SECTION_ORDER = [
   { key: 'cosmic_snapshot', title: 'Cosmic Snapshot', icon: '🌌' },
@@ -36,17 +37,22 @@ const CosmicDashboard = ({
   apiBase,
   userId,
   assessmentId,
+  paidProducts: paidProductsProp = [],
 }) => {
   const [cosmicReport, setCosmicReport] = useState(null);
   const [eligibility, setEligibility] = useState(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const [reportError, setReportError] = useState(null);
   const [generating, setGenerating] = useState(false);
+  const [paidProducts, setPaidProducts] = useState(paidProductsProp);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState(null);
 
   const baseUrl = apiBase || '';
   const meta = data?.metadata || {};
   const resolvedUserId = userId || meta.user_id;
   const resolvedAssessmentId = assessmentId || meta.assessment_id;
+  const cosmicPaid = (paidProducts || []).includes('COSMIC_BUNDLE');
 
   // Eligibility + already-generated cosmic report
   useEffect(() => {
@@ -61,10 +67,17 @@ const CosmicDashboard = ({
         );
         if (eligRes.ok) {
           const elig = await eligRes.json();
-          if (!cancelled) setEligibility(elig);
+          if (!cancelled) {
+            setEligibility(elig);
+            if (Array.isArray(elig?.paid_products)) {
+              setPaidProducts(elig.paid_products);
+            }
+          }
         }
 
-        // Try to fetch a previously generated cosmic report
+        // Try to fetch a previously generated cosmic report. The endpoint is
+        // gated, so a 402 simply means the cosmic bundle isn't paid — that's
+        // fine, we'll show the visual layer + UnlockGate instead.
         const repRes = await fetch(
           `${baseUrl}/api/v1/cosmic/report/${resolvedUserId}/${resolvedAssessmentId}`
         );
@@ -82,6 +95,37 @@ const CosmicDashboard = ({
     };
     fetchAll();
     return () => { cancelled = true; };
+  }, [baseUrl, resolvedUserId, resolvedAssessmentId]);
+
+  const handleDownloadPdf = useCallback(async () => {
+    if (!resolvedUserId || !resolvedAssessmentId) {
+      setPdfError('Missing user or assessment ID');
+      return;
+    }
+    setDownloadingPdf(true);
+    setPdfError(null);
+    try {
+      const url = `${baseUrl}/api/v1/export/cosmic-dashboard-pdf/${encodeURIComponent(resolvedUserId)}/${encodeURIComponent(resolvedAssessmentId)}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        // Backend returns 402 if COSMIC_BUNDLE isn't paid
+        const text = await res.text();
+        throw new Error(`PDF generation failed (${res.status}): ${text.slice(0, 160)}`);
+      }
+      const blob = await res.blob();
+      const dlUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = dlUrl;
+      link.download = `BEST_Cosmic_Dashboard_${String(resolvedAssessmentId).slice(0, 8)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(dlUrl);
+    } catch (err) {
+      setPdfError(err.message || 'Failed to download cosmic dashboard PDF.');
+    } finally {
+      setDownloadingPdf(false);
+    }
   }, [baseUrl, resolvedUserId, resolvedAssessmentId]);
 
   const handleGenerate = useCallback(async () => {
@@ -115,7 +159,6 @@ const CosmicDashboard = ({
 
   const sections = cosmicReport?.sections || {};
   const hasNarrative = Object.keys(sections).length > 0;
-  const eligible = eligibility?.eligible !== false;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -126,6 +169,21 @@ const CosmicDashboard = ({
         <p className="text-sm text-gray-500 mt-1">
           Your unified executive functioning profile across all environments
         </p>
+        {cosmicPaid && (
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <button
+              onClick={handleDownloadPdf}
+              disabled={downloadingPdf}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-md disabled:opacity-60 disabled:cursor-wait"
+            >
+              <span>{downloadingPdf ? '⏳' : '📄'}</span>
+              {downloadingPdf ? 'Generating PDF…' : 'Download Cosmic Dashboard PDF'}
+            </button>
+            {pdfError && (
+              <p className="text-xs text-red-600 max-w-md">{pdfError}</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* AI narrative — synthesis sections from the cosmic report */}
@@ -227,31 +285,51 @@ const CosmicDashboard = ({
 
       {/* Generate cosmic report CTA when we don't yet have one */}
       {!hasNarrative && (
-        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl p-6 border border-indigo-100 text-center">
-          <h3 className="font-bold text-indigo-900 mb-2">
-            {eligible
-              ? 'Generate Your Cosmic Integration Report'
-              : 'Cosmic Integration Locked'}
-          </h3>
-          <p className="text-sm text-gray-600 mb-4">
-            {eligible
-              ? 'Synthesize cross-environmental patterns into a single integrative narrative.'
-              : eligibility?.message ||
-                'Purchase all four lens reports to unlock the Cosmic Integration synthesis.'}
-          </p>
-          {eligible && (
-            <button
-              onClick={handleGenerate}
-              disabled={generating || loadingReport}
-              className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg disabled:opacity-60"
-            >
-              {generating ? 'Generating…' : 'Generate Cosmic Report →'}
-            </button>
-          )}
-          {reportError && (
-            <p className="mt-3 text-xs text-red-600">{reportError}</p>
-          )}
-        </div>
+        cosmicPaid ? (
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl p-6 border border-indigo-100 text-center">
+            <h3 className="font-bold text-indigo-900 mb-2">
+              {eligibility?.generation_eligible
+                ? 'Generate Your Cosmic Integration Report'
+                : 'Generate All 4 Lens Reports First'}
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {eligibility?.generation_eligible
+                ? 'Synthesize cross-environmental patterns into a single integrative narrative.'
+                : eligibility?.message ||
+                  'The Cosmic Bundle is unlocked — generate all 4 lens reports first, then synthesize.'}
+            </p>
+            {eligibility?.generation_eligible && (
+              <button
+                onClick={handleGenerate}
+                disabled={generating || loadingReport}
+                className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg disabled:opacity-60"
+              >
+                {generating ? 'Generating…' : 'Generate Cosmic Report →'}
+              </button>
+            )}
+            {reportError && (
+              <p className="mt-3 text-xs text-red-600">{reportError}</p>
+            )}
+          </div>
+        ) : (
+          <UnlockGate
+            product="COSMIC_BUNDLE"
+            title="Cosmic Integration Report™"
+            description="Synthesize all 4 lenses into one unified cross-domain narrative. The Cosmic Bundle also unlocks every lens report."
+            assessmentId={resolvedAssessmentId}
+            userEmail={resolvedUserId}
+            ctaLabel="Unlock Cosmic Bundle →"
+          >
+            <div className="space-y-3">
+              <div className="h-5 bg-gray-300 rounded w-2/3"></div>
+              <div className="h-3 bg-gray-200 rounded w-full"></div>
+              <div className="h-3 bg-gray-200 rounded w-5/6"></div>
+              <div className="h-3 bg-gray-200 rounded w-3/4"></div>
+              <div className="h-3 bg-gray-200 rounded w-4/6"></div>
+              <div className="h-3 bg-gray-200 rounded w-3/5"></div>
+            </div>
+          </UnlockGate>
+        )
       )}
 
       {onViewReports && (

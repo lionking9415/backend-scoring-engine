@@ -11,7 +11,13 @@ Structure:
   - AIMS function items (item_type="aims"): categorical —
     A=Attention, B=Sensory, C=Escape, D=Overwhelm
   - Response options: A/B/C/D mapped to numeric 1–4
-  - All behavioral items use forward direction (A=best → D=worst → A=4,D=1)
+  - BHP items use direction="forward" (A=best coping → norm 1.0 = high
+    internal capacity).
+  - PEI items use direction="reverse" (A=best coping → adjusted=1 → norm 0.0
+    = LOW external load registered on the user; D=worst coping → adjusted=4
+    → norm 1.0 = HIGH external load). This keeps PEI semantics consistent
+    with the spec's Probability Environment Index ("External Load") so that
+    `load_balance = BHP - PEI` and the quadrant model behave correctly.
 
 Each item includes:
   - item_id, item_text, domain, subdomain, construct, direction, weight,
@@ -70,7 +76,7 @@ ITEM_DICTIONARY = [
         "domain": "EXECUTIVE_FUNCTION_SKILLS",
         "subdomain": "TASK_INITIATION",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -154,7 +160,7 @@ ITEM_DICTIONARY = [
         "domain": "EXECUTIVE_FUNCTION_SKILLS",
         "subdomain": "ORGANIZATION",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -238,7 +244,7 @@ ITEM_DICTIONARY = [
         "domain": "EXECUTIVE_FUNCTION_SKILLS",
         "subdomain": "PLANNING",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -322,7 +328,7 @@ ITEM_DICTIONARY = [
         "domain": "EXECUTIVE_FUNCTION_SKILLS",
         "subdomain": "ACTIVATION",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -406,7 +412,7 @@ ITEM_DICTIONARY = [
         "domain": "COGNITIVE_CONTROL",
         "subdomain": "SUSTAINED_ATTENTION",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -490,7 +496,7 @@ ITEM_DICTIONARY = [
         "domain": "BEHAVIORAL_PATTERNS",
         "subdomain": "TASK_COMPLETION",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -574,7 +580,7 @@ ITEM_DICTIONARY = [
         "domain": "BEHAVIORAL_PATTERNS",
         "subdomain": "RESPONSE_ACTIVATION",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -658,7 +664,7 @@ ITEM_DICTIONARY = [
         "domain": "EMOTIONAL_REGULATION",
         "subdomain": "EMOTIONAL_REGULATION",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -742,7 +748,7 @@ ITEM_DICTIONARY = [
         "domain": "BEHAVIORAL_PATTERNS",
         "subdomain": "HELP_SEEKING",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -826,7 +832,7 @@ ITEM_DICTIONARY = [
         "domain": "ENVIRONMENTAL_DEMANDS",
         "subdomain": "SOCIAL_ENGAGEMENT",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -910,7 +916,7 @@ ITEM_DICTIONARY = [
         "domain": "BEHAVIORAL_PATTERNS",
         "subdomain": "SELF_ADVOCACY",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -994,7 +1000,7 @@ ITEM_DICTIONARY = [
         "domain": "MOTIVATIONAL_SYSTEMS",
         "subdomain": "FOLLOW_THROUGH",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,
@@ -1078,7 +1084,7 @@ ITEM_DICTIONARY = [
         "domain": "INTERNAL_STATE_FACTORS",
         "subdomain": "SHUTDOWN_RESPONSE",
         "construct": "PEI",
-        "direction": "forward",
+        "direction": "reverse",
         "weight": 1.0,
         "response_scale": "ABCD_4",
         "min_score": 1,

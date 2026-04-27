@@ -1,7 +1,14 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-const LockedSections = ({ features, assessmentId, userEmail }) => {
+const LockedSections = ({
+  features,
+  assessmentId,
+  userEmail,
+  product = 'COSMIC_BUNDLE',
+  ctaLabel = 'Unlock Full Galaxy',
+  helperCopy = "You've seen the surface. Now see the system.",
+}) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -26,8 +33,9 @@ const LockedSections = ({ features, assessmentId, userEmail }) => {
         params: {
           assessment_id: assessmentId,
           customer_email: userEmail,
+          product,
           success_url: `${window.location.origin}/success?assessment_id=${assessmentId}`,
-          cancel_url: window.location.href
+          cancel_url: window.location.href,
         }
       });
 
@@ -82,7 +90,7 @@ const LockedSections = ({ features, assessmentId, userEmail }) => {
       {/* Upgrade CTA */}
       <div className="mt-6 text-center">
         <p className="text-gray-600 text-sm mb-2 italic">
-          You've seen the surface. Now see the system.
+          {helperCopy}
         </p>
         <p className="text-gray-500 text-xs mb-4">
           Your full report includes your personalized AIMS for the BEST™ intervention pathway.
@@ -99,7 +107,7 @@ const LockedSections = ({ features, assessmentId, userEmail }) => {
           disabled={loading}
           className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-3 px-8 rounded-xl text-lg shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Processing...' : 'Unlock Full Galaxy'}
+          {loading ? 'Processing...' : ctaLabel}
         </button>
         <p className="text-gray-400 text-xs mt-2">
           {loading ? 'Redirecting to secure checkout...' : 'Secure payment via Stripe'}

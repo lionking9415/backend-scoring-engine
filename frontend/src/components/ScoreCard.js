@@ -99,12 +99,54 @@ const normalizePaidData = (data) => {
   };
 };
 
-const ScoreCard = ({ data, onRestart, assessmentId, userEmail, onViewCosmic, onViewAIReports }) => {
+const LENS_PRODUCTS = [
+  'PERSONAL_LIFESTYLE',
+  'STUDENT_SUCCESS',
+  'PROFESSIONAL_LEADERSHIP',
+  'FAMILY_ECOSYSTEM',
+];
+
+const ScoreCard = ({
+  data,
+  onRestart,
+  assessmentId,
+  userEmail,
+  paidProducts = [],
+  onViewCosmic,
+  onViewAIReports,
+}) => {
   const [upgradingFromLens, setUpgradingFromLens] = React.useState(false);
+  const [unlockingLens, setUnlockingLens] = React.useState(null); // SKU currently being unlocked
   const [downloadingPdf, setDownloadingPdf] = React.useState(false);
   const [pdfError, setPdfError] = React.useState(null);
   const [expandedSections, setExpandedSections] = React.useState({});
   const [selectedLens, setSelectedLens] = React.useState(null);
+
+  // 🔷 9: Unified dashboard — detect paid vs free and normalize.
+  // Trust the server-provided paidProducts list first; fall back to the
+  // legacy data-shape heuristic only if the prop wasn't passed (e.g. cached
+  // localStorage entry). All hooks below MUST run on every render — they
+  // sit above the early-return guard.
+  const hasAnyUnlock = (paidProducts || []).length > 0;
+  const cosmicUnlocked = (paidProducts || []).includes('COSMIC_BUNDLE');
+  const unlockedLenses = LENS_PRODUCTS.filter((l) =>
+    (paidProducts || []).includes(l) || cosmicUnlocked,
+  );
+  const isLensUnlocked = React.useCallback((lensKey) => {
+    if (lensKey === 'FULL_GALAXY') return cosmicUnlocked;
+    return cosmicUnlocked || (paidProducts || []).includes(lensKey);
+  }, [cosmicUnlocked, paidProducts]);
+
+  const isPaid = hasAnyUnlock ? true : isPaidData(data);
+
+  // Auto-select the first unlocked lens once we know what's paid.
+  React.useEffect(() => {
+    if (isPaid && !selectedLens) {
+      const firstUnlocked = ['PERSONAL_LIFESTYLE', 'STUDENT_SUCCESS', 'PROFESSIONAL_LEADERSHIP', 'FAMILY_ECOSYSTEM', 'FULL_GALAXY']
+        .find(isLensUnlocked);
+      if (firstUnlocked) setSelectedLens(firstUnlocked);
+    }
+  }, [isPaid, selectedLens, isLensUnlocked]);
 
   if (!data) {
     return (
@@ -114,8 +156,6 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail, onViewCosmic, onV
     );
   }
 
-  // 🔷 9: Unified dashboard — detect paid vs free and normalize
-  const isPaid = isPaidData(data);
   const normalized = isPaid ? normalizePaidData(data) : data;
 
   const {
@@ -145,9 +185,13 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail, onViewCosmic, onV
       setPdfError('No assessment ID available');
       return;
     }
-    // For paid reports, require lens selection
+    // For paid reports, require lens selection AND ensure that lens is unlocked
     if (isPaid && !selectedLens) {
       setPdfError('Please select a report lens before downloading');
+      return;
+    }
+    if (isPaid && selectedLens && !isLensUnlocked(selectedLens)) {
+      setPdfError(`The ${selectedLens.replace(/_/g, ' ')} lens is locked. Please unlock it first.`);
       return;
     }
     setDownloadingPdf(true);
@@ -170,6 +214,7 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail, onViewCosmic, onV
       const response = await axios.get(endpoint, {
         responseType: 'blob',
         timeout: 30000,
+        headers: userEmail ? { 'X-User-Email': userEmail } : undefined,
       });
 
       const blob = new Blob([response.data], { type: 'application/pdf' });
@@ -204,6 +249,44 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail, onViewCosmic, onV
       }
       setPdfError(errorMessage);
       setDownloadingPdf(false);
+    }
+  };
+
+  // Initiate Stripe checkout for a specific lens SKU. FULL_GALAXY maps to
+  // the COSMIC_BUNDLE product since there is no standalone "FULL_GALAXY" SKU.
+  const handleUnlockLens = async (lensKey) => {
+    if (!assessmentId) {
+      alert('No assessment ID available');
+      return;
+    }
+    if (!userEmail) {
+      alert('Please log in to unlock this lens');
+      return;
+    }
+    const product = lensKey === 'FULL_GALAXY' ? 'COSMIC_BUNDLE' : lensKey;
+    setUnlockingLens(product);
+    try {
+      const axios = (await import('axios')).default;
+      const response = await axios.post('/api/v1/payment/create-checkout', null, {
+        params: {
+          assessment_id: assessmentId,
+          customer_email: userEmail,
+          product,
+          success_url: `${window.location.origin}/success?assessment_id=${assessmentId}&product=${product}`,
+          cancel_url: window.location.href,
+        },
+      });
+      if (response.data?.success && response.data?.session?.checkout_url) {
+        window.location.href = response.data.session.checkout_url;
+        return;
+      }
+      const msg = response.data?.session?.error || 'Failed to start checkout. Please try again.';
+      alert(msg);
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || 'Checkout request failed.';
+      alert(`Could not start checkout: ${msg}`);
+    } finally {
+      setUnlockingLens(null);
     }
   };
 
@@ -1070,7 +1153,7 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail, onViewCosmic, onV
             <>
               <h2 className="text-xl font-bold text-gray-800 mb-2 text-center">Select Your Report Lens</h2>
               <p className="text-gray-500 text-sm text-center mb-5">
-                Your assessment data can be interpreted through multiple lenses. Choose the perspective most relevant to you.
+                Your assessment data can be interpreted through multiple lenses. Choose an unlocked lens to download, or unlock another.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                 {[
@@ -1080,28 +1163,61 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail, onViewCosmic, onV
                   { key: 'FAMILY_ECOSYSTEM', icon: '🟡', title: 'Family Ecosystem', desc: 'Gain insight into how your executive functioning operates within your relationships and family environment.' },
                   { key: 'FULL_GALAXY', icon: '🌠', title: 'Full Galaxy Report', desc: 'Experience the complete picture of your executive functioning system across all areas of life — personal, academic, professional, and family lenses unified.' },
                 ].map(lens => {
+                  const unlocked = isLensUnlocked(lens.key);
                   const isSelected = selectedLens === lens.key;
+                  const productSku = lens.key === 'FULL_GALAXY' ? 'COSMIC_BUNDLE' : lens.key;
+                  const isUnlockingThis = unlockingLens === productSku;
+
+                  // UNLOCKED tile — selectable for download
+                  if (unlocked) {
+                    return (
+                      <div
+                        key={lens.key}
+                        onClick={() => setSelectedLens(lens.key)}
+                        className={`relative border-2 rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${
+                          isSelected
+                            ? 'border-indigo-600 bg-indigo-100 ring-2 ring-indigo-300'
+                            : 'border-indigo-200 bg-indigo-50/30 hover:border-indigo-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          {isSelected && <span className="text-sm">✓</span>}
+                          <span className="text-lg">{lens.icon}</span>
+                          <h3 className={`font-bold text-sm ${
+                            isSelected ? 'text-indigo-900' : 'text-gray-800'
+                          }`}>{lens.title}</h3>
+                          <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
+                            UNLOCKED
+                          </span>
+                        </div>
+                        <p className={`text-xs leading-relaxed ${
+                          isSelected ? 'text-indigo-700' : 'text-gray-600'
+                        }`}>{lens.desc}</p>
+                      </div>
+                    );
+                  }
+
+                  // LOCKED tile — clicking starts Stripe checkout for this SKU
                   return (
-                    <div
+                    <button
                       key={lens.key}
-                      onClick={() => setSelectedLens(lens.key)}
-                      className={`border-2 rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${
-                        isSelected
-                          ? 'border-indigo-600 bg-indigo-100 ring-2 ring-indigo-300'
-                          : 'border-indigo-200 bg-indigo-50/30 hover:border-indigo-400'
-                      }`}
+                      type="button"
+                      onClick={() => handleUnlockLens(lens.key)}
+                      disabled={isUnlockingThis || !!unlockingLens}
+                      className="relative text-left border-2 border-dashed border-amber-300 bg-amber-50/40 hover:bg-amber-50 rounded-xl p-4 transition-all hover:shadow-md disabled:opacity-60 disabled:cursor-wait"
                     >
                       <div className="flex items-center gap-2 mb-2">
-                        {isSelected && <span className="text-sm">✓</span>}
-                        <span className="text-lg">{lens.icon}</span>
-                        <h3 className={`font-bold text-sm ${
-                          isSelected ? 'text-indigo-900' : 'text-gray-800'
-                        }`}>{lens.title}</h3>
+                        <span className="text-lg opacity-60">{lens.icon}</span>
+                        <h3 className="font-bold text-sm text-gray-700">{lens.title}</h3>
+                        <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                          <span>🔒</span> LOCKED
+                        </span>
                       </div>
-                      <p className={`text-xs leading-relaxed ${
-                        isSelected ? 'text-indigo-700' : 'text-gray-600'
-                      }`}>{lens.desc}</p>
-                    </div>
+                      <p className="text-xs leading-relaxed text-gray-500 mb-2">{lens.desc}</p>
+                      <div className="text-xs font-semibold text-amber-700">
+                        {isUnlockingThis ? 'Opening checkout…' : `Click to unlock ${lens.key === 'FULL_GALAXY' ? 'the Cosmic Bundle' : 'this lens'}`}
+                      </div>
+                    </button>
                   );
                 })}
               </div>
@@ -1148,31 +1264,65 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail, onViewCosmic, onV
           </div>
         </div>
 
-        {/* ── COSMIC & AI REPORTS NAV ── */}
+        {/* ── COSMIC & AI REPORTS NAV ──
+            These are PREMIUM features. Free users see locked tiles that
+            scroll the page back to the upgrade CTA so the gate is obvious;
+            paid users get full nav buttons.
+        */}
         <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 px-2">
           {onViewCosmic && (
-            <button
-              onClick={onViewCosmic}
-              className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-gray-900 to-indigo-950 text-white hover:from-gray-800 hover:to-indigo-900 transition-all shadow-lg"
-            >
-              <span className="text-2xl">🌌</span>
-              <div className="text-left">
-                <span className="font-bold text-sm block">Cosmic Dashboard</span>
-                <span className="text-xs text-gray-300">Galaxy Map, Load Matrix & more</span>
+            cosmicUnlocked ? (
+              <button
+                onClick={onViewCosmic}
+                className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-gray-900 to-indigo-950 text-white hover:from-gray-800 hover:to-indigo-900 transition-all shadow-lg"
+              >
+                <span className="text-2xl">🌌</span>
+                <div className="text-left">
+                  <span className="font-bold text-sm block">Cosmic Dashboard</span>
+                  <span className="text-xs text-gray-300">Galaxy Map, Load Matrix & more</span>
+                </div>
+              </button>
+            ) : (
+              <div
+                className="flex items-center gap-3 p-4 rounded-xl bg-gray-100 border-2 border-dashed border-gray-300 text-gray-500 cursor-not-allowed"
+                title="Unlock the Cosmic Bundle to view this dashboard"
+              >
+                <span className="text-2xl">🔒</span>
+                <div className="text-left">
+                  <span className="font-bold text-sm block">Cosmic Dashboard</span>
+                  <span className="text-xs">Locked — purchase the Cosmic Bundle</span>
+                </div>
               </div>
-            </button>
+            )
           )}
           {onViewAIReports && (
-            <button
-              onClick={onViewAIReports}
-              className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg"
-            >
-              <span className="text-2xl">📄</span>
-              <div className="text-left">
-                <span className="font-bold text-sm block">AI Reports</span>
-                <span className="text-xs text-indigo-200">Generate lens-specific narratives</span>
+            unlockedLenses.length > 0 ? (
+              <button
+                onClick={onViewAIReports}
+                className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg"
+              >
+                <span className="text-2xl">📄</span>
+                <div className="text-left">
+                  <span className="font-bold text-sm block">AI Reports</span>
+                  <span className="text-xs text-indigo-200">
+                    {unlockedLenses.length === 1
+                      ? '1 lens unlocked'
+                      : `${unlockedLenses.length} lenses unlocked`}
+                  </span>
+                </div>
+              </button>
+            ) : (
+              <div
+                className="flex items-center gap-3 p-4 rounded-xl bg-gray-100 border-2 border-dashed border-gray-300 text-gray-500 cursor-not-allowed"
+                title="Unlock at least one lens to view AI reports"
+              >
+                <span className="text-2xl">🔒</span>
+                <div className="text-left">
+                  <span className="font-bold text-sm block">AI Reports</span>
+                  <span className="text-xs">Locked — unlock any lens to begin</span>
+                </div>
               </div>
-            </button>
+            )
           )}
         </div>
 

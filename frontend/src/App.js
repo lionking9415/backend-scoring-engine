@@ -14,6 +14,7 @@ function App() {
   const [currentView, setCurrentView] = useState('welcome');
   const [assessmentData, setAssessmentData] = useState(null);
   const [assessmentId, setAssessmentId] = useState(null);
+  const [paidProducts, setPaidProducts] = useState([]);
   const [demographics, setDemographics] = useState(null);
   const [savedResult, setSavedResult] = useState(null);
   const [user, setUser] = useState(null);
@@ -48,6 +49,36 @@ function App() {
     } catch (e) {
       // Ignore corrupted data
     }
+
+    // After a Stripe checkout, PaymentSuccess persists a "pending unlock"
+    // hint. When the user lands back on '/', auto-route them into the
+    // ScoreCard for that assessment so the freshly-unlocked Cosmic
+    // Dashboard / AI Reports buttons are immediately reachable.
+    try {
+      const pendingRaw = localStorage.getItem('best_galaxy_pending_unlock');
+      if (pendingRaw) {
+        const pending = JSON.parse(pendingRaw);
+        localStorage.removeItem('best_galaxy_pending_unlock');
+        if (pending?.assessment_id) {
+          setLoadingReport(true);
+          axios.get(`/api/v1/results/${pending.assessment_id}`)
+            .then((response) => {
+              if (response.data?.success) {
+                setAssessmentData(response.data.data);
+                setAssessmentId(pending.assessment_id);
+                setPaidProducts(response.data.paid_products || pending.paid_products || []);
+                setCurrentView('results');
+              }
+            })
+            .catch((err) => {
+              console.error('Failed to resume after unlock:', err);
+            })
+            .finally(() => setLoadingReport(false));
+        }
+      }
+    } catch (e) {
+      // Ignore corrupted data
+    }
   }, []);
 
   const handleLogin = (userData) => {
@@ -60,7 +91,17 @@ function App() {
     setUser(userData);
     setDemographics(userData.demographics);
     localStorage.setItem('best_galaxy_current_user', JSON.stringify(userData));
-    setCurrentView('assessment');
+
+    // Full demographic intake (16-question form) is required before assessment.
+    // The signup form only collects 4 quick fields, so unless the user
+    // already has the full intake (`age_range` + `roles`), route them to
+    // the demographics view.
+    const existingDemo = userData?.demographics || {};
+    if (existingDemo.age_range && existingDemo.roles) {
+      setCurrentView('assessment');
+    } else {
+      setCurrentView('demographics');
+    }
   };
 
   const handleLogout = () => {
@@ -125,6 +166,7 @@ function App() {
   const handleAssessmentComplete = (data, resultId) => {
     setAssessmentData(data);
     setAssessmentId(resultId);
+    setPaidProducts([]); // a brand-new assessment is always free
     setCurrentView('results');
 
     // Persist to localStorage
@@ -152,28 +194,15 @@ function App() {
     if (savedResult) {
       setLoadingReport(true);
       try {
-        let reportData = savedResult.data;
-        
-        // Check if this is a free report (tier === 'free' or has constellation field)
-        const isFreeReport = reportData.tier === 'free' || reportData.constellation;
-        
-        // If it's stored as full format but should be free, convert to scorecard
-        if (!isFreeReport && !reportData.constellation) {
-          // This is a full report stored in localStorage, check if it needs conversion
-          try {
-            const scorecardResponse = await axios.post('/api/v1/convert-to-scorecard', reportData);
-            if (scorecardResponse.data.success) {
-              reportData = scorecardResponse.data.data;
-            }
-          } catch (conversionErr) {
-            console.error('Failed to convert to scorecard format:', conversionErr);
-            // Use full data anyway
-          }
+        // Always re-fetch from backend so the server can decide free vs paid
+        // and return the correct projection.
+        const response = await axios.get(`/api/v1/results/${savedResult.resultId}`);
+        if (response.data.success) {
+          setAssessmentData(response.data.data);
+          setAssessmentId(savedResult.resultId);
+          setPaidProducts(response.data.paid_products || []);
+          setCurrentView('results');
         }
-        
-        setAssessmentData(reportData);
-        setAssessmentId(savedResult.resultId);
-        setCurrentView('results');
       } catch (err) {
         console.error('Failed to load saved result:', err);
         alert('Failed to load saved result. Please try again.');
@@ -186,6 +215,7 @@ function App() {
   const handleRestart = () => {
     setAssessmentData(null);
     setAssessmentId(null);
+    setPaidProducts([]);
     setDemographics(null);
     setCurrentView('welcome');
   };
@@ -194,34 +224,16 @@ function App() {
     setCurrentView('my-reports');
   };
 
-  const handleViewReport = async (reportId, paymentStatus) => {
+  const handleViewReport = async (reportId) => {
     setLoadingReport(true);
     try {
+      // Backend decides whether to return the free ScoreCard projection or
+      // the full paid result and which SKUs are unlocked.
       const response = await axios.get(`/api/v1/results/${reportId}`);
       if (response.data.success) {
-        let reportData = response.data.data;
-        
-        // If it's a free report, we need to transform full result to scorecard format
-        if (paymentStatus === 'free') {
-          // Check if data is already in scorecard format (has 'constellation' field)
-          if (!reportData.constellation) {
-            // Data is in full format, need to convert to scorecard format
-            // Call the backend to get scorecard version
-            try {
-              const scorecardResponse = await axios.post('/api/v1/convert-to-scorecard', reportData);
-              if (scorecardResponse.data.success) {
-                reportData = scorecardResponse.data.data;
-              }
-            } catch (conversionErr) {
-              console.error('Failed to convert to scorecard format:', conversionErr);
-              // Fallback: use full data anyway, ScoreCard component might handle it
-            }
-          }
-        }
-        
-        setAssessmentData(reportData);
+        setAssessmentData(response.data.data);
         setAssessmentId(reportId);
-        // 🔷 9: Always use unified ScoreCard dashboard for both free and paid
+        setPaidProducts(response.data.paid_products || []);
         setCurrentView('results');
       }
     } catch (err) {
@@ -367,6 +379,7 @@ function App() {
           onRestart={handleRestart}
           assessmentId={assessmentId}
           userEmail={user?.email}
+          paidProducts={paidProducts}
           onViewCosmic={() => setCurrentView('cosmic-dashboard')}
           onViewAIReports={() => setCurrentView('ai-reports')}
         />
@@ -402,6 +415,7 @@ function App() {
           <ReportViewer
             assessmentId={assessmentId}
             userEmail={user?.email}
+            paidProducts={paidProducts}
             onBack={() => setCurrentView('results')}
           />
         </div>
@@ -422,6 +436,7 @@ function App() {
             apiBase={process.env.REACT_APP_API_URL || ''}
             userId={user?.email || user?.id}
             assessmentId={assessmentId}
+            paidProducts={paidProducts}
             onViewReports={() => setCurrentView('ai-reports')}
           />
         </div>

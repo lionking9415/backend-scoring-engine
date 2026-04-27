@@ -57,6 +57,10 @@ def score_single_item(raw_response: float, item_def: dict) -> dict:
 
     Returns a traceable scoring record:
       raw → adjusted → weighted → normalized
+
+    `item_type` is propagated so downstream aggregators can distinguish
+    behavioral severity items from AIMS function-detection items (which
+    must NOT be averaged into PEI/BHP/domain means).
     """
     direction = item_def["direction"]
     weight = item_def["weight"]
@@ -72,6 +76,7 @@ def score_single_item(raw_response: float, item_def: dict) -> dict:
         "domain": item_def["domain"],
         "subdomain": item_def["subdomain"],
         "construct": item_def["construct"],
+        "item_type": item_def.get("item_type", "behavioral"),
         "raw_response": raw_response,
         "direction": direction,
         "adjusted_score": round(adjusted, INTERNAL_PRECISION),
@@ -115,14 +120,32 @@ def score_all_items(validated_responses: list[dict],
     return scored_items
 
 
+def _is_quantitative(item: dict) -> bool:
+    """
+    Return True if the item is a behavioral severity item that should be
+    included in PEI/BHP/domain quantitative aggregation.
+
+    AIMS function-detection items (item_type="aims") are categorical
+    (A=Attention, B=Sensory, C=Escape, D=Overwhelm) and MUST be excluded
+    from numerical aggregation — their A/B/C/D values are tags, not
+    severity ratings. They are aggregated separately via
+    `aggregate_aims_functions`.
+    """
+    return item.get("item_type", "behavioral") != "aims"
+
+
 def aggregate_by_domain(scored_items: list[dict]) -> dict[str, float]:
     """
     Section 3.7 / 5.2: Domain Aggregation
-    domain_score = average(normalized_scores for all items in domain)
+    domain_score = average(normalized_scores for all *behavioral* items in domain)
+
+    AIMS function items are excluded — see `_is_quantitative`.
     """
     domain_scores: dict[str, list[float]] = {}
 
     for item in scored_items:
+        if not _is_quantitative(item):
+            continue
         domain = item["domain"]
         if domain not in domain_scores:
             domain_scores[domain] = []
@@ -141,11 +164,13 @@ def aggregate_by_domain(scored_items: list[dict]) -> dict[str, float]:
 def aggregate_by_subdomain(scored_items: list[dict]) -> dict[str, dict[str, float]]:
     """
     Section 5.3: Subdomain Aggregation
-    Subdomains roll up INTO domains.
+    Subdomains roll up INTO domains. AIMS items are excluded.
     """
     subdomain_scores: dict[str, dict[str, list[float]]] = {}
 
     for item in scored_items:
+        if not _is_quantitative(item):
+            continue
         domain = item["domain"]
         subdomain = item["subdomain"]
         if domain not in subdomain_scores:
@@ -167,12 +192,16 @@ def aggregate_by_subdomain(scored_items: list[dict]) -> dict[str, dict[str, floa
 def aggregate_by_construct(scored_items: list[dict]) -> dict[str, float]:
     """
     Section 3.8: Construct Aggregation (PEI vs BHP)
-    PEI_score = average(normalized_scores of all PEI items)
-    BHP_score = average(normalized_scores of all BHP items)
+    PEI_score = average(normalized_scores of all PEI behavioral items)
+    BHP_score = average(normalized_scores of all BHP behavioral items)
+
+    AIMS function items are excluded — they are categorical, not severity.
     """
     construct_scores: dict[str, list[float]] = {"PEI": [], "BHP": []}
 
     for item in scored_items:
+        if not _is_quantitative(item):
+            continue
         construct = item["construct"]
         construct_scores[construct].append(item["normalized_score"])
 
@@ -245,10 +274,13 @@ def compute_domain_construct_balance(scored_items: list[dict]) -> dict[str, dict
     """
     Section 5.9: Domain–Construct Interaction Mapping
     For each domain, compute the PEI and BHP component scores separately.
+    AIMS items are excluded.
     """
     domain_construct: dict[str, dict[str, list[float]]] = {}
 
     for item in scored_items:
+        if not _is_quantitative(item):
+            continue
         domain = item["domain"]
         construct = item["construct"]
         if domain not in domain_construct:
@@ -284,3 +316,83 @@ def compute_domain_construct_balance(scored_items: list[dict]) -> dict[str, dict
         }
 
     return result
+
+
+# =============================================================================
+# AIMS FUNCTION AGGREGATION (categorical, not quantitative)
+# =============================================================================
+# AIMS function items capture WHY a person disengages (Attention / Sensory /
+# Escape / Overwhelm). The A/B/C/D answer maps to a function category, not a
+# severity. We aggregate them as a distribution rather than a mean so the
+# AIMS intervention plan can target the user's primary function pattern.
+# =============================================================================
+
+# Numeric raw_response → AIMS function category (Section 2 / item_dictionary)
+_AIMS_RESPONSE_TO_FUNCTION = {
+    4: "ATTENTION",
+    3: "SENSORY",
+    2: "ESCAPE",
+    1: "OVERWHELM",
+}
+
+
+def aggregate_aims_functions(scored_items: list[dict]) -> dict:
+    """
+    Build a categorical distribution of AIMS function answers.
+
+    Returns:
+        {
+          "total": int,                    # number of AIMS items answered
+          "counts": {"ATTENTION": n, "SENSORY": n, "ESCAPE": n, "OVERWHELM": n},
+          "percentages": {... 0.0–1.0 ...},
+          "primary_function": "OVERWHELM" | "ESCAPE" | ... | None,
+          "by_domain": {
+              DOMAIN_NAME: {"counts": {...}, "primary_function": "..."}
+          }
+        }
+    """
+    counts = {"ATTENTION": 0, "SENSORY": 0, "ESCAPE": 0, "OVERWHELM": 0}
+    by_domain: dict[str, dict[str, int]] = {}
+    total = 0
+
+    for item in scored_items:
+        if item.get("item_type") != "aims":
+            continue
+        raw = item.get("raw_response")
+        function = _AIMS_RESPONSE_TO_FUNCTION.get(int(raw)) if raw is not None else None
+        if function is None:
+            continue
+
+        counts[function] += 1
+        total += 1
+
+        domain = item.get("domain", "UNKNOWN")
+        if domain not in by_domain:
+            by_domain[domain] = {"ATTENTION": 0, "SENSORY": 0, "ESCAPE": 0, "OVERWHELM": 0}
+        by_domain[domain][function] += 1
+
+    percentages = {
+        k: round(v / total, INTERNAL_PRECISION) if total > 0 else 0.0
+        for k, v in counts.items()
+    }
+    primary_function = (
+        max(counts, key=lambda k: counts[k]) if total > 0 else None
+    )
+
+    by_domain_out = {}
+    for d, d_counts in by_domain.items():
+        d_total = sum(d_counts.values())
+        by_domain_out[d] = {
+            "counts": d_counts,
+            "primary_function": (
+                max(d_counts, key=lambda k: d_counts[k]) if d_total > 0 else None
+            ),
+        }
+
+    return {
+        "total": total,
+        "counts": counts,
+        "percentages": percentages,
+        "primary_function": primary_function,
+        "by_domain": by_domain_out,
+    }
