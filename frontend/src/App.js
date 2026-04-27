@@ -6,6 +6,8 @@ import PaymentSuccess from './components/PaymentSuccess';
 import Login from './components/Login';
 import Signup from './components/Signup';
 import MyReports from './components/MyReports';
+import ReportViewer from './components/ReportViewer';
+import CosmicDashboard from './components/CosmicDashboard';
 import axios from 'axios';
 
 function App() {
@@ -75,12 +77,19 @@ function App() {
       setCurrentView('login');
       return;
     }
-    // Use demographics from user profile (collected during signup)
-    setDemographics(user.demographics || { source: 'web_frontend' });
-    setCurrentView('assessment');
+    // Check if user has completed the full demographic intake (has age_range from the 16-question form)
+    const existingDemo = user.demographics || {};
+    if (existingDemo.age_range && existingDemo.roles) {
+      // Already completed full intake — proceed directly
+      setDemographics(existingDemo);
+      setCurrentView('assessment');
+    } else {
+      // Route through full demographic intake
+      setCurrentView('demographics');
+    }
   };
 
-  const handleDemographicsComplete = (demoData) => {
+  const handleDemographicsComplete = async (demoData) => {
     setDemographics(demoData);
     // Update user demographics in localStorage
     if (user) {
@@ -93,6 +102,16 @@ function App() {
       if (users[user.email]) {
         users[user.email].demographics = demoData;
         localStorage.setItem('best_galaxy_users', JSON.stringify(users));
+      }
+
+      // Submit to backend so report generator can auto-fetch demographics
+      try {
+        await axios.post('/api/v1/demographics/submit', {
+          user_id: user.email,
+          responses: demoData,
+        });
+      } catch (err) {
+        console.warn('Demographics backend submit failed (will still proceed):', err);
       }
     }
     setCurrentView('assessment');
@@ -117,6 +136,15 @@ function App() {
       }));
     } catch (e) {
       // Storage full or unavailable
+    }
+
+    // Re-submit demographics keyed to the assessment_id so report generator can find them
+    if (demographics && user?.email && resultId) {
+      axios.post('/api/v1/demographics/submit', {
+        user_id: user.email,
+        assessment_id: resultId,
+        responses: demographics,
+      }).catch(() => {});
     }
   };
 
@@ -339,6 +367,8 @@ function App() {
           onRestart={handleRestart}
           assessmentId={assessmentId}
           userEmail={user?.email}
+          onViewCosmic={() => setCurrentView('cosmic-dashboard')}
+          onViewAIReports={() => setCurrentView('ai-reports')}
         />
       )}
 
@@ -365,6 +395,36 @@ function App() {
             </div>
           )}
         </>
+      )}
+
+      {currentView === 'ai-reports' && (
+        <div className="p-4">
+          <ReportViewer
+            assessmentId={assessmentId}
+            userEmail={user?.email}
+            onBack={() => setCurrentView('results')}
+          />
+        </div>
+      )}
+
+      {currentView === 'cosmic-dashboard' && (
+        <div className="p-4">
+          <div className="max-w-4xl mx-auto mb-4 flex justify-between items-center">
+            <button
+              onClick={() => setCurrentView('results')}
+              className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold"
+            >
+              ← Back to ScoreCard
+            </button>
+          </div>
+          <CosmicDashboard
+            data={assessmentData}
+            apiBase={process.env.REACT_APP_API_URL || ''}
+            userId={user?.email || user?.id}
+            assessmentId={assessmentId}
+            onViewReports={() => setCurrentView('ai-reports')}
+          />
+        </div>
       )}
 
     </div>

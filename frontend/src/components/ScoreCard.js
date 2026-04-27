@@ -87,6 +87,7 @@ const normalizePaidData = (data) => {
     },
     strengths: (summary.top_strengths || []).map(s => s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())),
     growth_edges: (summary.growth_edges || []).map(e => e.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())),
+    applied_domains: data.applied_domains || {},
     lens_teasers: null,
     locked_features: null,
     metadata: data.metadata || {},
@@ -98,7 +99,7 @@ const normalizePaidData = (data) => {
   };
 };
 
-const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
+const ScoreCard = ({ data, onRestart, assessmentId, userEmail, onViewCosmic, onViewAIReports }) => {
   const [upgradingFromLens, setUpgradingFromLens] = React.useState(false);
   const [downloadingPdf, setDownloadingPdf] = React.useState(false);
   const [pdfError, setPdfError] = React.useState(null);
@@ -121,6 +122,7 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
     galaxy_snapshot,
     constellation,
     load_balance,
+    applied_domains,
     strengths,
     growth_edges,
     lens_teasers,
@@ -558,6 +560,155 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
           </div>
         </div>
 
+        {/* ── 5. APPLIED EXECUTIVE FUNCTIONING DOMAINS (Phase 4) ── */}
+        {applied_domains && (applied_domains.financial_ef || applied_domains.health_ef) && (
+          <div className="mt-6">
+            <h2 className="text-lg font-bold text-gray-700 mb-3 flex items-center gap-2">
+              <span className="text-xl">💼</span> Applied Executive Functioning Domains
+            </h2>
+            <p className="text-xs text-gray-400 mb-4">How your executive functioning expresses in everyday living</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {['financial_ef', 'health_ef'].map(key => {
+                const ad = applied_domains[key];
+                if (!ad) return null;
+                const isFinancial = key === 'financial_ef';
+                const icon = isFinancial ? '💰' : '🏃';
+                const accentColor = isFinancial ? '#8B5CF6' : '#10B981';
+                const accentBg = isFinancial ? 'bg-purple-50 border-purple-200' : 'bg-emerald-50 border-emerald-200';
+                const accentText = isFinancial ? 'text-purple-700' : 'text-emerald-700';
+                const accentBar = isFinancial ? 'bg-purple-500' : 'bg-emerald-500';
+                const scorePercent = Math.min(100, Math.max(0, ad.domain_score || 50));
+
+                return (
+                  <div key={key} className={`rounded-xl shadow-sm p-4 border ${accentBg}`}>
+                    {/* Header */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h3 className={`font-bold ${accentText} text-base flex items-center gap-2`}>
+                          <span className="text-xl">{icon}</span>
+                          {ad.domain_name || (isFinancial ? 'Financial Executive Functioning Profile™' : 'Health & Fitness Executive Functioning Profile™')}
+                        </h3>
+                      </div>
+                      <span
+                        className="px-3 py-1 rounded-full text-white text-xs font-semibold whitespace-nowrap"
+                        style={{ backgroundColor: ad.status_band_color || '#6B7280' }}
+                      >
+                        {ad.status_band || 'N/A'}
+                      </span>
+                    </div>
+
+                    {/* Domain Score Bar */}
+                    <div className="mb-3">
+                      <div className="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>Domain Score</span>
+                        <span className="font-bold" style={{ color: accentColor }}>{scorePercent.toFixed(0)}/100</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div
+                          className={`h-2.5 rounded-full ${accentBar}`}
+                          style={{ width: `${scorePercent}%` }}
+                        ></div>
+                      </div>
+                    </div>
+
+                    {/* BHP / PEI Mini Row */}
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div className="bg-white rounded-lg p-2 text-center shadow-sm">
+                        <div className="text-xs text-gray-500">Internal Capacity (BHP)</div>
+                        <div className="text-lg font-bold text-blue-600">{(ad.bhp || 0).toFixed(1)}</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-2 text-center shadow-sm">
+                        <div className="text-xs text-gray-500">External Pressure (PEI)</div>
+                        <div className="text-lg font-bold text-red-500">{(ad.pei || 0).toFixed(1)}</div>
+                      </div>
+                    </div>
+
+                    {/* Mini Load Balance Visualization */}
+                    <div className="mb-3">
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                        <span>BHP</span>
+                        <span>Load Balance</span>
+                        <span>PEI</span>
+                      </div>
+                      <div className="relative w-full h-4 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className="absolute left-0 top-0 h-full bg-blue-400 rounded-l-full"
+                          style={{ width: `${Math.min(100, ((ad.bhp || 50) / ((ad.bhp || 50) + (ad.pei || 50))) * 100)}%` }}
+                        ></div>
+                        <div
+                          className="absolute right-0 top-0 h-full bg-red-400 rounded-r-full"
+                          style={{ width: `${Math.min(100, ((ad.pei || 50) / ((ad.bhp || 50) + (ad.pei || 50))) * 100)}%` }}
+                        ></div>
+                        <div className="absolute left-1/2 top-0 h-full w-0.5 bg-gray-600 transform -translate-x-1/2"></div>
+                      </div>
+                    </div>
+
+                    {/* Interpretation (When Stable / When Loaded) */}
+                    {ad.interpretation && (
+                      <div className="space-y-2 mb-3">
+                        {ad.interpretation.when_stable && (
+                          <div className="text-xs">
+                            <span className="font-semibold text-green-600">When Stable: </span>
+                            <span className="text-gray-600">{ad.interpretation.when_stable}</span>
+                          </div>
+                        )}
+                        {ad.interpretation.when_loaded && (
+                          <div className="text-xs">
+                            <span className="font-semibold text-orange-600">Under Load: </span>
+                            <span className="text-gray-600">{ad.interpretation.when_loaded}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Risk Flags */}
+                    {ad.active_flags && ad.active_flags.length > 0 && (
+                      <div className="mb-3">
+                        <div className="text-xs font-semibold text-gray-600 mb-1">Risk Flags:</div>
+                        <div className="flex flex-wrap gap-1">
+                          {ad.active_flags.map((flag, i) => (
+                            <span key={i} className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">
+                              ⚠ {flag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* AIMS Targets (collapsible for paid, teaser for free) */}
+                    {isPaid && ad.aims_targets && ad.aims_targets.length > 0 && (
+                      <div>
+                        <div className="text-xs font-semibold text-gray-600 mb-1">AIMS Targets:</div>
+                        <div className="space-y-1">
+                          {ad.aims_targets.map((target, i) => (
+                            <div key={i} className="flex items-start gap-1 text-xs">
+                              <span className="font-semibold" style={{ color: accentColor, minWidth: '80px' }}>
+                                {target.phase}:
+                              </span>
+                              <span className="text-gray-600">{target.target}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {!isPaid && (
+                      <div className="mt-3 pt-2 border-t border-gray-200">
+                        <button
+                          onClick={handleLensUpgrade}
+                          disabled={upgradingFromLens}
+                          className="w-full text-center text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors disabled:opacity-50"
+                        >
+                          {upgradingFromLens ? '⏳ Processing...' : '🔍 View Details — Unlock Full Report →'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* ── PAID: Domain-by-Domain Scoring (Expandable) ── */}
         {isPaid && domains && (
           <ExpandableSection id="domains" title="Domain-by-Domain Scoring" icon="📊" defaultOpen={true}>
@@ -625,6 +776,163 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
                   )}
                 </div>
               ))}
+            </div>
+          </ExpandableSection>
+        )}
+
+        {/* ── PAID: Applied EF Domains Detail (Expandable) ── */}
+        {isPaid && applied_domains && (applied_domains.financial_ef || applied_domains.health_ef) && (
+          <ExpandableSection id="applied-domains" title="Applied EF Domain Analysis" icon="💼" defaultOpen={true}>
+            <div className="space-y-6">
+              {['financial_ef', 'health_ef'].map(key => {
+                const ad = (data.applied_domains || applied_domains || {})[key];
+                if (!ad) return null;
+                const isFinancial = key === 'financial_ef';
+                const accentColor = isFinancial ? '#8B5CF6' : '#10B981';
+                const accentBorder = isFinancial ? 'border-purple-300' : 'border-emerald-300';
+                const accentBg = isFinancial ? 'bg-purple-50' : 'bg-emerald-50';
+                const accentText = isFinancial ? 'text-purple-700' : 'text-emerald-700';
+                const icon = isFinancial ? '💰' : '🏃';
+                const scorePercent = Math.min(100, Math.max(0, ad.domain_score || 50));
+                const subvars = ad.subvariables || {};
+                const flags = ad.flags || {};
+                const aims = ad.aims_targets || [];
+                const interp = ad.interpretation || {};
+
+                const activeFlags = Object.entries(flags)
+                  .filter(([, v]) => v && v.triggered)
+                  .map(([, v]) => v.description);
+
+                return (
+                  <div key={key} className={`border-2 ${accentBorder} rounded-xl p-5 ${accentBg}`}>
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className={`font-bold ${accentText} text-lg flex items-center gap-2`}>
+                        <span>{icon}</span>
+                        {ad.domain_name || (isFinancial ? 'Financial Executive Functioning Profile™' : 'Health & Fitness Executive Functioning Profile™')}
+                      </h3>
+                      <span
+                        className="px-3 py-1 rounded-full text-white text-sm font-semibold"
+                        style={{ backgroundColor: ad.status_band_color || '#6B7280' }}
+                      >
+                        {ad.status_band || 'N/A'}
+                      </span>
+                    </div>
+
+                    {/* Score + BHP/PEI/LB Row */}
+                    <div className="grid grid-cols-4 gap-3 mb-4">
+                      <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+                        <div className="text-xs text-gray-500">Domain Score</div>
+                        <div className="text-2xl font-bold" style={{ color: accentColor }}>{scorePercent.toFixed(0)}</div>
+                        <div className="text-xs text-gray-400">/100</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+                        <div className="text-xs text-gray-500">BHP (Capacity)</div>
+                        <div className="text-2xl font-bold text-blue-600">{(ad.bhp || 0).toFixed(1)}</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+                        <div className="text-xs text-gray-500">PEI (Pressure)</div>
+                        <div className="text-2xl font-bold text-red-500">{(ad.pei || 0).toFixed(1)}</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 text-center shadow-sm">
+                        <div className="text-xs text-gray-500">Load Balance</div>
+                        <div className={`text-2xl font-bold ${(ad.load_balance || 0) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {(ad.load_balance || 0) >= 0 ? '+' : ''}{(ad.load_balance || 0).toFixed(1)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Interpretation */}
+                    {interp.when_stable && (
+                      <div className="bg-white rounded-lg p-3 mb-2 shadow-sm">
+                        <span className="font-semibold text-green-600 text-sm">When Stable: </span>
+                        <span className="text-gray-700 text-sm">{interp.when_stable}</span>
+                      </div>
+                    )}
+                    {interp.when_loaded && (
+                      <div className="bg-white rounded-lg p-3 mb-2 shadow-sm">
+                        <span className="font-semibold text-orange-600 text-sm">Under Load: </span>
+                        <span className="text-gray-700 text-sm">{interp.when_loaded}</span>
+                      </div>
+                    )}
+
+                    {/* Domain Interpretation Narrative (Block 5) */}
+                    {interp.domain_narrative && (
+                      <div className="bg-white rounded-lg p-3 mb-3 shadow-sm border-l-4" style={{ borderLeftColor: accentColor }}>
+                        <span className="font-semibold text-gray-700 text-sm">Pattern Analysis: </span>
+                        <span className="text-gray-600 text-sm">{interp.domain_narrative}</span>
+                        {interp.strain_source && (
+                          <span className={`ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                            interp.strain_source === 'capacity-driven' ? 'bg-green-100 text-green-700' :
+                            interp.strain_source === 'load-driven' ? 'bg-red-100 text-red-700' :
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {interp.strain_source}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Subvariables Breakdown */}
+                    {Object.keys(subvars).length > 0 && (
+                      <div className="mb-3">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Subvariable Breakdown</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {Object.entries(subvars).map(([varName, varScore]) => (
+                            <div key={varName} className="bg-white rounded-lg px-3 py-2 shadow-sm flex items-center justify-between">
+                              <span className="text-xs text-gray-600">
+                                {varName.replace(/_/g, ' ').replace(/^(financial|health)\s/, '').replace(/\b\w/g, c => c.toUpperCase())}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                                  <div
+                                    className="h-1.5 rounded-full"
+                                    style={{ width: `${Math.min(100, varScore)}%`, backgroundColor: accentColor }}
+                                  ></div>
+                                </div>
+                                <span className="text-xs font-semibold" style={{ color: accentColor, minWidth: '28px', textAlign: 'right' }}>
+                                  {varScore.toFixed(0)}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Risk Flags */}
+                    {activeFlags.length > 0 && (
+                      <div className="mb-3">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Risk Flags</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {activeFlags.map((flag, i) => (
+                            <span key={i} className="px-3 py-1 bg-red-100 text-red-700 text-xs rounded-full font-medium">
+                              ⚠ {flag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* AIMS Targets */}
+                    {aims.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">AIMS Targets</h4>
+                        <div className="space-y-1">
+                          {aims.map((target, i) => (
+                            <div key={i} className="bg-white rounded-lg px-3 py-2 shadow-sm flex items-start gap-2">
+                              <span className="font-semibold text-xs whitespace-nowrap" style={{ color: accentColor, minWidth: '85px' }}>
+                                {target.phase}:
+                              </span>
+                              <span className="text-xs text-gray-600">{target.target}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </ExpandableSection>
         )}
@@ -838,6 +1146,34 @@ const ScoreCard = ({ data, onRestart, assessmentId, userEmail }) => {
               </p>
             )}
           </div>
+        </div>
+
+        {/* ── COSMIC & AI REPORTS NAV ── */}
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 px-2">
+          {onViewCosmic && (
+            <button
+              onClick={onViewCosmic}
+              className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-gray-900 to-indigo-950 text-white hover:from-gray-800 hover:to-indigo-900 transition-all shadow-lg"
+            >
+              <span className="text-2xl">🌌</span>
+              <div className="text-left">
+                <span className="font-bold text-sm block">Cosmic Dashboard</span>
+                <span className="text-xs text-gray-300">Galaxy Map, Load Matrix & more</span>
+              </div>
+            </button>
+          )}
+          {onViewAIReports && (
+            <button
+              onClick={onViewAIReports}
+              className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg"
+            >
+              <span className="text-2xl">📄</span>
+              <div className="text-left">
+                <span className="font-bold text-sm block">AI Reports</span>
+                <span className="text-xs text-indigo-200">Generate lens-specific narratives</span>
+              </div>
+            </button>
+          )}
         </div>
 
         {/* ── FOOTER ── */}

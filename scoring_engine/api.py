@@ -587,6 +587,556 @@ def create_app(use_database: bool = False) -> FastAPI:
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
+    # -----------------------------------------------------------------
+    # AI Report PDF Export
+    # -----------------------------------------------------------------
+
+    @app.get("/api/v1/export/ai-report-pdf/{report_id}")
+    def export_ai_report_pdf(report_id: str):
+        """Generate and download PDF for an AI-generated lens or Cosmic report."""
+        from fastapi.responses import Response
+        from scoring_engine.pdf_service import generate_ai_report_pdf
+        from scoring_engine.report_generator import get_report
+
+        logger.info(f"AI report PDF export requested for report_id: {report_id}")
+
+        report = get_report(report_id)
+        if not report:
+            raise HTTPException(status_code=404, detail=f"AI report '{report_id}' not found")
+
+        sections = report.get("sections", {})
+        report_type = report.get("report_type", "PERSONAL_LIFESTYLE")
+        user_id = report.get("user_id")
+        generated_at = report.get("generated_at")
+
+        pdf_bytes = generate_ai_report_pdf(
+            report_sections=sections,
+            report_type=report_type,
+            user_id=user_id,
+            generated_at=generated_at,
+        )
+        if not pdf_bytes:
+            raise HTTPException(status_code=500, detail="Failed to generate AI report PDF")
+
+        lens_slug = report_type.lower()
+        filename = f"BEST_Galaxy_{lens_slug}_{report_id[:8]}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    # -----------------------------------------------------------------
+    # Demographics Intake Endpoints
+    # -----------------------------------------------------------------
+
+    @app.get("/api/v1/demographics/questions")
+    def get_demographic_questions():
+        """Return the demographic intake survey questions for the frontend."""
+        from scoring_engine.demographics import DEMOGRAPHIC_QUESTIONS
+        return {"success": True, "questions": DEMOGRAPHIC_QUESTIONS}
+
+    @app.post("/api/v1/demographics/submit")
+    def submit_demographics(request: dict):
+        """Submit demographic intake responses."""
+        from scoring_engine.demographics import (
+            build_demographic_output,
+            store_demographics,
+        )
+
+        user_id = request.get("user_id")
+        assessment_id = request.get("assessment_id")
+        raw_responses = request.get("responses", {})
+
+        if not user_id:
+            raise HTTPException(status_code=400, detail="user_id is required")
+
+        demographics = build_demographic_output(raw_responses)
+
+        # Store in DB if available
+        record_id = None
+        if db_available:
+            record_id = store_demographics(user_id, assessment_id or "", demographics)
+
+        # Also store in memory for immediate access
+        memory_store[f"demo_{user_id}_{assessment_id or 'latest'}"] = demographics
+
+        return {
+            "success": True,
+            "record_id": record_id,
+            "demographics": demographics,
+        }
+
+    @app.get("/api/v1/demographics/{user_id}")
+    def get_user_demographics(user_id: str, assessment_id: Optional[str] = None):
+        """Retrieve stored demographics for a user."""
+        from scoring_engine.demographics import get_demographics
+
+        # Try DB
+        if db_available:
+            data = get_demographics(user_id, assessment_id)
+            if data:
+                return {"success": True, "demographics": data}
+
+        # Fallback to memory
+        key = f"demo_{user_id}_{assessment_id or 'latest'}"
+        if key in memory_store:
+            return {"success": True, "demographics": memory_store[key]}
+
+        return {"success": True, "demographics": None}
+
+    # -----------------------------------------------------------------
+    # AI Report Generation Endpoints
+    # -----------------------------------------------------------------
+
+    @app.post("/api/v1/reports/generate")
+    def generate_lens_report(request: dict):
+        """
+        Generate an AI-powered report for a specific lens.
+
+        Required:
+          - assessment_id: ID of the completed assessment
+          - report_type: one of STUDENT_SUCCESS, PERSONAL_LIFESTYLE,
+                         PROFESSIONAL_LEADERSHIP, FAMILY_ECOSYSTEM
+        Optional:
+          - demographics: demographic context dict (or auto-fetched from storage)
+        """
+        from scoring_engine.report_generator import generate_report, store_report
+
+        assessment_id = request.get("assessment_id")
+        report_type = request.get("report_type")
+        demographics = request.get("demographics")
+        request_user_id = request.get("user_id")
+
+        if not assessment_id or not report_type:
+            raise HTTPException(
+                status_code=400,
+                detail="assessment_id and report_type are required",
+            )
+
+        valid_types = [
+            "STUDENT_SUCCESS", "PERSONAL_LIFESTYLE",
+            "PROFESSIONAL_LEADERSHIP", "FAMILY_ECOSYSTEM",
+        ]
+        if report_type not in valid_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"report_type must be one of: {valid_types}",
+            )
+
+        # Fetch assessment data
+        assessment_data = _fetch_result(assessment_id)
+
+        # Resolve user_id from request or assessment metadata
+        meta = assessment_data.get("metadata", {})
+        user_id = request_user_id or meta.get("user_email") or meta.get("user_id", "")
+
+        # Auto-fetch demographics if not provided — try multiple lookup keys
+        if not demographics:
+            lookup_ids = list(dict.fromkeys(filter(None, [
+                user_id, meta.get("user_email"), meta.get("user_id"),
+            ])))
+            for uid in lookup_ids:
+                demo_key = f"demo_{uid}_{assessment_id}"
+                if demo_key in memory_store:
+                    demographics = memory_store[demo_key]
+                    break
+                demo_key_latest = f"demo_{uid}_latest"
+                if demo_key_latest in memory_store:
+                    demographics = memory_store[demo_key_latest]
+                    break
+            if not demographics and db_available:
+                from scoring_engine.demographics import get_demographics
+                for uid in lookup_ids:
+                    demographics = get_demographics(uid, assessment_id)
+                    if demographics:
+                        break
+
+        # Generate report
+        try:
+            report = generate_report(assessment_data, report_type, demographics)
+        except Exception as e:
+            logger.error(f"Report generation failed: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
+
+        # Store report
+        report_id = store_report(user_id or "unknown", assessment_id, report)
+
+        return {
+            "success": True,
+            "report_id": report_id,
+            "report": report,
+        }
+
+    @app.get("/api/v1/reports/{report_id}")
+    def get_generated_report(report_id: str):
+        """Retrieve a generated AI report by ID."""
+        from scoring_engine.report_generator import get_report
+
+        report = get_report(report_id)
+        if not report:
+            raise HTTPException(status_code=404, detail=f"Report '{report_id}' not found")
+        return {"success": True, "report": report}
+
+    @app.get("/api/v1/reports/user/{user_id}/assessment/{assessment_id}")
+    def get_user_assessment_reports(user_id: str, assessment_id: str):
+        """Get all generated reports for a user's assessment."""
+        from scoring_engine.report_generator import get_user_lens_reports, get_user_lens_report_ids
+
+        reports = get_user_lens_reports(user_id, assessment_id)
+        report_ids = get_user_lens_report_ids(user_id, assessment_id)
+        return {
+            "success": True,
+            "reports": reports,
+            "report_ids": report_ids,
+            "lens_count": len(reports),
+        }
+
+    # -----------------------------------------------------------------
+    # Cosmic Integration Report Endpoints
+    # -----------------------------------------------------------------
+
+    @app.get("/api/v1/cosmic/eligibility/{user_id}/{assessment_id}")
+    def check_cosmic_eligibility_endpoint(user_id: str, assessment_id: str):
+        """Check if user has all 4 lenses to unlock the Cosmic Integration Report."""
+        from scoring_engine.report_generator import check_cosmic_eligibility
+        result = check_cosmic_eligibility(user_id, assessment_id)
+        return {"success": True, **result}
+
+    @app.get("/api/v1/cosmic/report/{user_id}/{assessment_id}")
+    def get_cosmic_report(user_id: str, assessment_id: str):
+        """Retrieve a previously generated FULL_GALAXY (cosmic) report."""
+        try:
+            from scoring_engine.supabase_client import get_supabase_client
+            client = get_supabase_client()
+            if client is not None:
+                response = (
+                    client.table("generated_reports")
+                    .select("*")
+                    .eq("user_id", user_id)
+                    .eq("assessment_id", assessment_id)
+                    .eq("report_type", "FULL_GALAXY")
+                    .order("generated_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if response.data:
+                    return response.data[0]
+        except Exception as e:
+            logger.debug(f"Cosmic report DB lookup failed: {e}")
+
+        # Fallback to in-memory store
+        from scoring_engine.report_generator import _report_store
+        for rid, rdata in _report_store.items():
+            if (rdata.get("user_id") == user_id
+                    and rdata.get("assessment_id") == assessment_id
+                    and rdata.get("report_type") == "FULL_GALAXY"):
+                return rdata
+
+        raise HTTPException(status_code=404, detail="No cosmic report found for this assessment")
+
+    @app.post("/api/v1/cosmic/generate")
+    def generate_cosmic_report_endpoint(request: dict):
+        """
+        Generate the Cosmic Integration Report.
+        Requires all 4 lens reports to be already generated.
+        """
+        from scoring_engine.report_generator import (
+            check_cosmic_eligibility,
+            get_user_lens_reports,
+            generate_cosmic_report,
+            store_report,
+        )
+
+        assessment_id = request.get("assessment_id")
+        user_id = request.get("user_id")
+        demographics = request.get("demographics")
+
+        if not assessment_id or not user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="assessment_id and user_id are required",
+            )
+
+        # Check eligibility
+        eligibility = check_cosmic_eligibility(user_id, assessment_id)
+        if not eligibility["eligible"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cosmic Integration requires all 4 lenses. Missing: {eligibility['missing_lenses']}",
+            )
+
+        # Fetch assessment data
+        assessment_data = _fetch_result(assessment_id)
+
+        # Get all 4 lens reports
+        lens_reports = get_user_lens_reports(user_id, assessment_id)
+
+        # Auto-fetch demographics if not provided — try multiple lookup keys
+        if not demographics:
+            meta = assessment_data.get("metadata", {})
+            lookup_ids = list(dict.fromkeys(filter(None, [
+                user_id, meta.get("user_email"), meta.get("user_id"),
+            ])))
+            for uid in lookup_ids:
+                demo_key = f"demo_{uid}_{assessment_id}"
+                if demo_key in memory_store:
+                    demographics = memory_store[demo_key]
+                    break
+                demo_key_latest = f"demo_{uid}_latest"
+                if demo_key_latest in memory_store:
+                    demographics = memory_store[demo_key_latest]
+                    break
+            if not demographics and db_available:
+                from scoring_engine.demographics import get_demographics
+                for uid in lookup_ids:
+                    demographics = get_demographics(uid, assessment_id)
+                    if demographics:
+                        break
+
+        # Generate cosmic report
+        try:
+            report = generate_cosmic_report(lens_reports, assessment_data, demographics)
+        except Exception as e:
+            logger.error(f"Cosmic report generation failed: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Cosmic report generation failed: {str(e)}")
+
+        # Store
+        report_id = store_report(user_id, assessment_id, report)
+
+        return {
+            "success": True,
+            "report_id": report_id,
+            "report": report,
+        }
+
+    # -----------------------------------------------------------------
+    # Deep-Dive Reports (Financial / Health)
+    # -----------------------------------------------------------------
+
+    def _resolve_demographics(user_id: str, assessment_id: str, meta: dict, provided: Optional[dict]) -> Optional[dict]:
+        """Shared demographic-lookup logic used by deep-dive and compatibility."""
+        if provided:
+            return provided
+        lookup_ids = list(dict.fromkeys(filter(None, [
+            user_id, meta.get("user_email"), meta.get("user_id"),
+        ])))
+        for uid in lookup_ids:
+            for key in (f"demo_{uid}_{assessment_id}", f"demo_{uid}_latest"):
+                if key in memory_store:
+                    return memory_store[key]
+        if db_available:
+            from scoring_engine.demographics import get_demographics
+            for uid in lookup_ids:
+                d = get_demographics(uid, assessment_id)
+                if d:
+                    return d
+        return None
+
+    @app.post("/api/v1/reports/deep-dive/financial")
+    def generate_financial_deep_dive_endpoint(request: dict):
+        """Generate a Financial Executive Functioning deep-dive report."""
+        from scoring_engine.deep_dive import generate_financial_deep_dive
+        from scoring_engine.report_generator import store_report
+
+        assessment_id = request.get("assessment_id")
+        user_id = request.get("user_id")
+        if not assessment_id or not user_id:
+            raise HTTPException(status_code=400, detail="assessment_id and user_id are required")
+
+        assessment_data = _fetch_result(assessment_id)
+        meta = assessment_data.get("metadata", {})
+        demographics = _resolve_demographics(user_id, assessment_id, meta, request.get("demographics"))
+
+        try:
+            report = generate_financial_deep_dive(
+                assessment_data, demographics,
+                user_id=user_id, assessment_id=assessment_id,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Financial deep-dive failed: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+
+        report_id = store_report(user_id, assessment_id, report)
+        return {"success": True, "report_id": report_id, "report": report}
+
+    @app.post("/api/v1/reports/deep-dive/health")
+    def generate_health_deep_dive_endpoint(request: dict):
+        """Generate a Health & Fitness Executive Functioning deep-dive report."""
+        from scoring_engine.deep_dive import generate_health_deep_dive
+        from scoring_engine.report_generator import store_report
+
+        assessment_id = request.get("assessment_id")
+        user_id = request.get("user_id")
+        if not assessment_id or not user_id:
+            raise HTTPException(status_code=400, detail="assessment_id and user_id are required")
+
+        assessment_data = _fetch_result(assessment_id)
+        meta = assessment_data.get("metadata", {})
+        demographics = _resolve_demographics(user_id, assessment_id, meta, request.get("demographics"))
+
+        try:
+            report = generate_health_deep_dive(
+                assessment_data, demographics,
+                user_id=user_id, assessment_id=assessment_id,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Health deep-dive failed: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+
+        report_id = store_report(user_id, assessment_id, report)
+        return {"success": True, "report_id": report_id, "report": report}
+
+    # -----------------------------------------------------------------
+    # Compatibility Report
+    # -----------------------------------------------------------------
+
+    @app.post("/api/v1/reports/compatibility")
+    def generate_compatibility_endpoint(request: dict):
+        """
+        Generate a structural compatibility report between two completed assessments.
+
+        Required:
+          - assessment_a_id, assessment_b_id
+        Optional:
+          - user_a_id, user_b_id (for audit/storage)
+        """
+        from scoring_engine.compatibility import generate_compatibility_report
+
+        a_id = request.get("assessment_a_id")
+        b_id = request.get("assessment_b_id")
+        if not a_id or not b_id:
+            raise HTTPException(
+                status_code=400,
+                detail="assessment_a_id and assessment_b_id are required",
+            )
+
+        try:
+            assessment_a = _fetch_result(a_id)
+            assessment_b = _fetch_result(b_id)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to fetch assessments: {e}")
+
+        try:
+            report = generate_compatibility_report(
+                assessment_a, assessment_b,
+                user_a_id=request.get("user_a_id"),
+                user_b_id=request.get("user_b_id"),
+            )
+        except Exception as e:
+            logger.error(f"Compatibility generation failed: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e))
+
+        # Store under user_a_id / assessment_a_id for traceability
+        from scoring_engine.report_generator import store_report
+        report_id = store_report(
+            request.get("user_a_id") or "compat",
+            a_id,
+            report,
+        )
+        return {"success": True, "report_id": report_id, "report": report}
+
+    # -----------------------------------------------------------------
+    # Cosmic Dashboard PDF Export
+    # -----------------------------------------------------------------
+
+    @app.get("/api/v1/export/cosmic-dashboard-pdf/{user_id}/{assessment_id}")
+    def export_cosmic_dashboard_pdf(user_id: str, assessment_id: str):
+        """
+        Export the cosmic dashboard (visuals + narrative) as a PDF.
+        Falls back to the standard AI-report PDF if no cosmic report exists.
+        """
+        from fastapi.responses import Response
+        from scoring_engine.pdf_service import generate_cosmic_dashboard_pdf
+
+        try:
+            assessment_data = _fetch_result(assessment_id)
+        except HTTPException:
+            raise
+
+        # Find the most recent cosmic report (if any)
+        cosmic_report = None
+        try:
+            from scoring_engine.supabase_client import get_supabase_client
+            client = get_supabase_client()
+            if client is not None:
+                response = (
+                    client.table("generated_reports")
+                    .select("*")
+                    .eq("user_id", user_id)
+                    .eq("assessment_id", assessment_id)
+                    .eq("report_type", "FULL_GALAXY")
+                    .order("generated_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if response.data:
+                    cosmic_report = response.data[0]
+        except Exception as e:
+            logger.debug(f"Cosmic PDF — DB lookup failed: {e}")
+
+        if cosmic_report is None:
+            from scoring_engine.report_generator import _report_store
+            for rdata in _report_store.values():
+                if (rdata.get("user_id") == user_id
+                        and rdata.get("assessment_id") == assessment_id
+                        and rdata.get("report_type") == "FULL_GALAXY"):
+                    cosmic_report = rdata
+                    break
+
+        try:
+            pdf_bytes = generate_cosmic_dashboard_pdf(
+                assessment_data=assessment_data,
+                cosmic_report=cosmic_report,
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.error(f"Cosmic dashboard PDF generation failed: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="PDF generation failed")
+
+        if not pdf_bytes:
+            raise HTTPException(status_code=500, detail="Failed to generate cosmic dashboard PDF")
+
+        filename = f"BEST_Cosmic_Dashboard_{user_id[:8]}_{assessment_id[:8]}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    # -----------------------------------------------------------------
+    # AI Audit Log Endpoints
+    # -----------------------------------------------------------------
+
+    @app.get("/api/v1/audit/logs")
+    def list_audit_logs(
+        user_id: Optional[str] = None,
+        assessment_id: Optional[str] = None,
+        limit: int = 50,
+    ):
+        """List recent AI prompt/response audit log entries (admin/QA tool)."""
+        from scoring_engine import audit
+        return {
+            "success": True,
+            "logs": audit.get_audit_logs(
+                user_id=user_id,
+                assessment_id=assessment_id,
+                limit=min(max(limit, 1), 500),
+            ),
+        }
+
+    @app.get("/api/v1/audit/summary")
+    def audit_summary():
+        """Aggregate stats over the in-memory audit buffer."""
+        from scoring_engine import audit
+        return {"success": True, "summary": audit.get_audit_summary()}
+
     return app
 
 

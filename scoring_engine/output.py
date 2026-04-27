@@ -119,8 +119,16 @@ def build_output(
         },
         "construct_scores": rounded_construct,
         "load_framework": rounded_framework,
+        # Canonical keys
         "domains": rounded_domains,
         "summary": {
+            "top_strengths": top_strengths,
+            "growth_edges": growth_edges,
+        },
+        # Aliases for downstream consumers (AI prompt assembly, frontend) that
+        # historically referenced these key names. Kept in sync above.
+        "domain_profiles": rounded_domains,
+        "summary_indicators": {
             "top_strengths": top_strengths,
             "growth_edges": growth_edges,
         },
@@ -266,6 +274,33 @@ def build_scorecard_output(full_output: dict) -> dict:
         },
     ]
 
+    # 7. Applied EF Domains (Phase 4 — Financial & Health)
+    applied_domains = full_output.get("applied_domains", {})
+    applied_domains_output = {}
+    for key in ("financial_ef", "health_ef"):
+        ad = applied_domains.get(key)
+        if ad:
+            active_flags = [
+                f["description"]
+                for f in ad.get("flags", {}).values()
+                if f.get("triggered")
+            ]
+            applied_domains_output[key] = {
+                "domain_name": ad.get("domain_name", ""),
+                "domain_key": ad.get("domain_key", key),
+                "bhp": ad.get("bhp", 0),
+                "pei": ad.get("pei", 0),
+                "load_balance": ad.get("load_balance", 0),
+                "domain_score": ad.get("domain_score", 50),
+                "status_band": ad.get("status_band", "Fragile Balance"),
+                "status_band_color": ad.get("status_band_color", "#6B7280"),
+                "interpretation": ad.get("interpretation", {}),
+                "subvariables": ad.get("subvariables", {}),
+                "flags": ad.get("flags", {}),
+                "active_flags": active_flags,
+                "aims_targets": ad.get("aims_targets", []),
+            }
+
     return {
         "tier": "free",
         "metadata": full_output["metadata"],
@@ -280,6 +315,7 @@ def build_scorecard_output(full_output: dict) -> dict:
             "pei_score": pei_val,
             "bhp_score": bhp_val,
         },
+        "applied_domains": applied_domains_output,
         "strengths": display_strengths,
         "growth_edges": display_edges,
         "lens_teasers": {

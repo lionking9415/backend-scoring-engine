@@ -37,7 +37,9 @@ from scoring_engine.scoring import (
     aggregate_indices_by_domain_weights,
     compute_domain_construct_balance,
 )
+from scoring_engine.applied_domains import compute_applied_domains
 from scoring_engine.archetypes import assign_archetype
+from scoring_engine.cross_domain import compute_cross_domain
 from scoring_engine.framework import compute_framework
 from scoring_engine.domains import (
     build_domain_profiles,
@@ -161,6 +163,17 @@ def process_assessment(
     domain_construct_balance = compute_domain_construct_balance(scored_items)
 
     # -------------------------------------------------------------------------
+    # Step 6b: Compute subdomain scores (needed for applied domains)
+    # -------------------------------------------------------------------------
+    subdomain_scores = aggregate_by_subdomain(scored_items)
+
+    # -------------------------------------------------------------------------
+    # Step 6c: Compute Applied EF Domains (Phase 4)
+    # Financial EF + Health & Fitness EF — standalone derived domains
+    # -------------------------------------------------------------------------
+    applied_domains = compute_applied_domains(subdomain_scores, domain_construct_balance)
+
+    # -------------------------------------------------------------------------
     # Step 7: Build domain profiles (Section 5.12)
     # -------------------------------------------------------------------------
     domain_profiles = build_domain_profiles(domain_scores, domain_construct_balance)
@@ -194,6 +207,58 @@ def process_assessment(
         domain_profiles=domain_profiles,
     )
     output["archetype"] = archetype
+
+    # -------------------------------------------------------------------------
+    # Step 9b: Attach Applied EF Domains (Phase 4)
+    # -------------------------------------------------------------------------
+    output["applied_domains"] = applied_domains
+
+    # -------------------------------------------------------------------------
+    # Step 9b2: Compute Cross-Domain Pattern Layer (Phase 4.5)
+    # Drives the Cosmic Integration UI visuals and the AI prompt's
+    # cross-domain analysis section.
+    # -------------------------------------------------------------------------
+    cross_domain = compute_cross_domain(
+        construct_scores=construct_scores,
+        domains=output["domains"],
+        applied_domains=applied_domains,
+    )
+    output["cross_domain"] = cross_domain
+
+    # -------------------------------------------------------------------------
+    # Step 9c: Compute Overall Report Composite (Phase 4)
+    # Blended total incorporating core EF + applied domains.
+    # Preferred: keep separate outputs; this is available if a single total is needed.
+    # -------------------------------------------------------------------------
+    domain_score_lookup = {dp["name"]: dp["score"] for dp in domain_profiles}
+    # Map core domain groups to scores (0-1 scale)
+    action_ft = (
+        domain_score_lookup.get("EXECUTIVE_FUNCTION_SKILLS", 0.5) +
+        domain_score_lookup.get("BEHAVIORAL_PATTERNS", 0.5)
+    ) / 2
+    focus_drive = (
+        domain_score_lookup.get("COGNITIVE_CONTROL", 0.5) +
+        domain_score_lookup.get("MOTIVATIONAL_SYSTEMS", 0.5)
+    ) / 2
+    emotional_reg = (
+        domain_score_lookup.get("EMOTIONAL_REGULATION", 0.5) +
+        domain_score_lookup.get("INTERNAL_STATE_FACTORS", 0.5)
+    ) / 2
+    env_load_raw = domain_score_lookup.get("ENVIRONMENTAL_DEMANDS", 0.5)
+    inverse_env_load = 1.0 - env_load_raw  # inverse pressure rendering
+    fin_score = applied_domains.get("financial_ef", {}).get("domain_score", 50) / 100
+    health_score = applied_domains.get("health_ef", {}).get("domain_score", 50) / 100
+
+    overall_composite = round(
+        (0.22 * action_ft) +
+        (0.18 * focus_drive) +
+        (0.18 * emotional_reg) +
+        (0.17 * inverse_env_load) +
+        (0.12 * fin_score) +
+        (0.13 * health_score),
+        4,
+    )
+    output["overall_report_composite"] = overall_composite
 
     # -------------------------------------------------------------------------
     # Step 10: Generate AI interpretation (Section 7)

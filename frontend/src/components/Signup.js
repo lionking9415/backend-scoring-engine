@@ -40,12 +40,7 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
       return;
     }
 
-    // Validate demographics
-    if (!demographics.age_range || !demographics.gender || !demographics.education || !demographics.referral_source) {
-      setError('Please complete all demographic fields');
-      setLoading(false);
-      return;
-    }
+    // Demographics are optional at signup — full intake happens before assessment
 
     try {
       // Call backend signup API
@@ -148,7 +143,7 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
 
           <div className="pt-4 border-t border-gray-200">
             <p className="text-sm font-semibold text-gray-700 mb-3">
-              Quick Background Info <span className="text-gray-400 font-normal">(Optional)</span>
+              Quick Background Info <span className="text-gray-400 font-normal">(Optional — full intake before assessment)</span>
             </p>
             
             <div className="space-y-3">

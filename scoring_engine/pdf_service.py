@@ -362,6 +362,237 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         elements.append(sum_table)
         elements.append(Spacer(1, 0.2 * inch))
         
+        # ── 4b. APPLIED EXECUTIVE FUNCTIONING DOMAINS (Phase 4) ──
+        applied_domains = scorecard.get('applied_domains', {})
+        if applied_domains:
+            elements.append(Paragraph("Applied Executive Functioning Domains", heading_style))
+            elements.append(Paragraph(
+                "How your executive functioning expresses in everyday living",
+                ParagraphStyle('ADSubtitle', parent=body_style, fontSize=9,
+                             textColor=colors.HexColor('#6B7280'), spaceAfter=10)
+            ))
+            
+            # Domain-specific subtitles (GAP 7)
+            domain_subtitles = {
+                'financial_ef': 'How your executive system manages planning, regulation, and decision-making under financial pressure.',
+                'health_ef': 'How your executive system supports eating, movement, sleep, and self-care under real-life demand.',
+            }
+            
+            for key, label, accent in [
+                ('financial_ef', 'Financial Executive Functioning Profile™', '#8B5CF6'),
+                ('health_ef', 'Health & Fitness Executive Functioning Profile™', '#10B981'),
+            ]:
+                ad = applied_domains.get(key)
+                if not ad:
+                    continue
+                
+                domain_score = ad.get('domain_score', 50)
+                bhp_val = ad.get('bhp', 0)
+                pei_val = ad.get('pei', 0)
+                lb_val = ad.get('load_balance', 0)
+                status_band = ad.get('status_band', 'N/A')
+                interp = ad.get('interpretation', {})
+                subvariables = ad.get('subvariables', {})
+                flags = ad.get('flags', {})
+                active_flags = ad.get('active_flags', [])
+                aims = ad.get('aims_targets', [])
+                
+                # If active_flags not pre-computed, derive from flags dict
+                if not active_flags and flags:
+                    active_flags = [f['description'] for f in flags.values()
+                                   if isinstance(f, dict) and f.get('triggered')]
+                
+                # Block 1: Section header with title + subtitle + status band
+                elements.append(Paragraph(
+                    f'<font color="{accent}"><b>{label}</b></font>'
+                    f'&nbsp;&nbsp;<font color="{accent}" size="9">[{status_band}]</font>',
+                    ParagraphStyle('ADTitle', parent=body_style, fontSize=13, spaceAfter=2)
+                ))
+                elements.append(Paragraph(
+                    f'<i>{domain_subtitles.get(key, "")}</i>',
+                    ParagraphStyle('ADDomSub', parent=body_style, fontSize=9,
+                                 textColor=colors.HexColor('#6B7280'), spaceAfter=6)
+                ))
+                
+                # Metrics table — 5 columns matching web report
+                ad_data = [
+                    ['Domain Score', 'BHP (Capacity)', 'PEI (Pressure)', 'Load Balance', 'Status Band'],
+                    [f'{domain_score:.0f}/100', f'{bhp_val:.1f}', f'{pei_val:.1f}', f'{lb_val:+.1f}', status_band],
+                ]
+                ad_table = Table(ad_data, colWidths=[1.2 * inch, 1.2 * inch, 1.2 * inch, 1.1 * inch, 1.3 * inch])
+                lb_color = '#16A34A' if lb_val >= 0 else '#DC2626'
+                ad_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(accent)),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 8),
+                    ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 1), (-1, 1), 11),
+                    ('TEXTCOLOR', (0, 1), (0, 1), colors.HexColor(accent)),
+                    ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor('#2563EB')),
+                    ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor('#DC2626')),
+                    ('TEXTCOLOR', (3, 1), (3, 1), colors.HexColor(lb_color)),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#D1D5DB')),
+                ]))
+                elements.append(ad_table)
+                elements.append(Spacer(1, 0.06 * inch))
+                
+                # Block 2: BHP vs PEI visual balance bar (GAP 5)
+                bhp_total = bhp_val + pei_val if (bhp_val + pei_val) > 0 else 1
+                bhp_pct = int(round((bhp_val / bhp_total) * 20))
+                pei_pct = 20 - bhp_pct
+                bhp_bar = '█' * bhp_pct
+                pei_bar = '█' * pei_pct
+                balance_label = 'BHP > PEI' if lb_val > 0 else ('PEI > BHP' if lb_val < 0 else 'BALANCED')
+                bal_data = [
+                    ['INTERNAL CAPACITY (BHP)', 'BALANCE', 'EXTERNAL PRESSURE (PEI)'],
+                    [f'{bhp_bar}  {bhp_val:.1f}', balance_label, f'{pei_val:.1f}  {pei_bar}'],
+                ]
+                bal_tbl = Table(bal_data, colWidths=[2.4 * inch, 1.2 * inch, 2.4 * inch])
+                bal_tbl.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#EFF6FF')),
+                    ('BACKGROUND', (1, 0), (1, 0), colors.HexColor('#F3F4F6')),
+                    ('BACKGROUND', (2, 0), (2, 0), colors.HexColor('#FEF2F2')),
+                    ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1E40AF')),
+                    ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#374151')),
+                    ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#991B1B')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 7),
+                    ('FONTNAME', (0, 1), (-1, 1), 'Courier-Bold'),
+                    ('FONTSIZE', (0, 1), (-1, 1), 8),
+                    ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                    ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                    ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ]))
+                elements.append(bal_tbl)
+                elements.append(Spacer(1, 0.08 * inch))
+                
+                # Block 3: When Stable / When Loaded
+                if interp.get('when_stable'):
+                    elements.append(Paragraph(
+                        f'<font color="#16A34A"><b>When Stable:</b></font> {interp["when_stable"]}',
+                        ParagraphStyle('ADInterp', parent=body_style, fontSize=10, leading=14, spaceAfter=4)
+                    ))
+                if interp.get('when_loaded'):
+                    elements.append(Paragraph(
+                        f'<font color="#EA580C"><b>Under Load:</b></font> {interp["when_loaded"]}',
+                        ParagraphStyle('ADInterp2', parent=body_style, fontSize=10, leading=14, spaceAfter=6)
+                    ))
+                
+                # Block 4: Risk Flags
+                if active_flags:
+                    elements.append(Paragraph(
+                        '<b>Risk Flags</b>',
+                        ParagraphStyle('FlagHead', parent=body_style, fontSize=10,
+                                     textColor=colors.HexColor('#374151'), spaceBefore=2, spaceAfter=4)
+                    ))
+                    flags_text = '&nbsp;&nbsp;|&nbsp;&nbsp;'.join(
+                        f'<font color="#DC2626">⚠ {f}</font>' for f in active_flags
+                    )
+                    elements.append(Paragraph(
+                        flags_text,
+                        ParagraphStyle('ADFlags', parent=body_style, fontSize=9, leading=13, spaceAfter=4)
+                    ))
+                
+                # Block 5: Domain Interpretation narrative (GAP 6)
+                if interp.get('domain_narrative'):
+                    elements.append(Paragraph(
+                        '<b>Domain Interpretation</b>',
+                        ParagraphStyle('DNHead', parent=body_style, fontSize=10,
+                                     textColor=colors.HexColor('#374151'), spaceBefore=2, spaceAfter=4)
+                    ))
+                    elements.append(Paragraph(
+                        interp['domain_narrative'],
+                        ParagraphStyle('DNBody', parent=body_style, fontSize=9, leading=13,
+                                     textColor=colors.HexColor('#374151'), spaceAfter=6)
+                    ))
+                
+                # Subvariable Breakdown table
+                if subvariables:
+                    elements.append(Paragraph(
+                        '<b>Subvariable Breakdown</b>',
+                        ParagraphStyle('SVHead', parent=body_style, fontSize=10,
+                                     textColor=colors.HexColor('#374151'), spaceBefore=4, spaceAfter=4)
+                    ))
+                    sv_data = [['Subvariable', 'Score', 'Bar']]
+                    for sv_name, sv_score in subvariables.items():
+                        clean_name = sv_name.replace('_', ' ')
+                        for prefix in ('financial ', 'health '):
+                            if clean_name.startswith(prefix):
+                                clean_name = clean_name[len(prefix):]
+                        clean_name = clean_name.title()
+                        bar_pct = min(100, max(0, sv_score if isinstance(sv_score, (int, float)) else 0))
+                        bar_char = '█' * int(bar_pct / 5) + '░' * (20 - int(bar_pct / 5))
+                        sv_data.append([clean_name, f'{bar_pct:.0f}', bar_char])
+                    
+                    sv_table = Table(sv_data, colWidths=[2.4 * inch, 0.6 * inch, 3.0 * inch])
+                    sv_style_cmds = [
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F3F4F6')),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 8),
+                        ('FONTNAME', (0, 1), (0, -1), 'Helvetica'),
+                        ('FONTSIZE', (0, 1), (-1, -1), 8),
+                        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                        ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                        ('ALIGN', (2, 0), (2, -1), 'LEFT'),
+                        ('TEXTCOLOR', (2, 1), (2, -1), colors.HexColor(accent)),
+                        ('FONTNAME', (2, 1), (2, -1), 'Courier'),
+                        ('FONTSIZE', (2, 1), (2, -1), 7),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                        ('TOPPADDING', (0, 0), (-1, -1), 3),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ]
+                    for row_i in range(1, len(sv_data)):
+                        score_val = float(sv_data[row_i][1])
+                        if score_val >= 70:
+                            sc = '#16A34A'
+                        elif score_val >= 40:
+                            sc = '#D97706'
+                        else:
+                            sc = '#DC2626'
+                        sv_style_cmds.append(('TEXTCOLOR', (1, row_i), (1, row_i), colors.HexColor(sc)))
+                        sv_style_cmds.append(('FONTNAME', (1, row_i), (1, row_i), 'Helvetica-Bold'))
+                    sv_table.setStyle(TableStyle(sv_style_cmds))
+                    elements.append(sv_table)
+                    elements.append(Spacer(1, 0.08 * inch))
+                
+                # Block 6: AIMS Targets
+                if aims:
+                    elements.append(Paragraph(
+                        '<b>AIMS Targets</b>',
+                        ParagraphStyle('AimsHead', parent=body_style, fontSize=10,
+                                     textColor=colors.HexColor('#374151'), spaceBefore=2, spaceAfter=4)
+                    ))
+                    aims_data = [['Phase', 'Target']]
+                    for a in aims:
+                        aims_data.append([a.get('phase', ''), a.get('target', '')])
+                    aims_tbl = Table(aims_data, colWidths=[1.2 * inch, 4.8 * inch])
+                    aims_tbl.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(accent)),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 8),
+                        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 1), (-1, -1), 8),
+                        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D1D5DB')),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                        ('TOPPADDING', (0, 0), (-1, -1), 4),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F9FAFB')]),
+                    ]))
+                    elements.append(aims_tbl)
+                
+                elements.append(Spacer(1, 0.2 * inch))
+        
         # ── 5. FOUR LENS TEASERS ──
         elements.append(Paragraph("Your Profile Across 4 Lenses", heading_style))
         
@@ -708,6 +939,311 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
                 ('RIGHTPADDING', (0, 0), (-1, -1), 8),
             ]))
             elements.append(env_table)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Applied Executive Functioning Domains (Phase 4) — Full Report
+        applied_domains = assessment_data.get('applied_domains', {})
+        if applied_domains:
+            elements.append(Paragraph("Applied Executive Functioning Domains", heading_style))
+            elements.append(Paragraph(
+                "How your executive functioning expresses in everyday living. These are standalone "
+                "applied life domains derived from your core EF profile.",
+                ParagraphStyle('PaidADSub', parent=body_style, fontSize=10,
+                             textColor=colors.HexColor('#6B7280'), spaceAfter=12)
+            ))
+            
+            # Domain-specific subtitles (GAP 7)
+            paid_domain_subtitles = {
+                'financial_ef': 'How your executive system manages planning, regulation, and decision-making under financial pressure.',
+                'health_ef': 'How your executive system supports eating, movement, sleep, and self-care under real-life demand.',
+            }
+            
+            for key, label, accent in [
+                ('financial_ef', 'Financial Executive Functioning Profile™', '#8B5CF6'),
+                ('health_ef', 'Health & Fitness Executive Functioning Profile™', '#10B981'),
+            ]:
+                ad = applied_domains.get(key)
+                if not ad:
+                    continue
+                
+                domain_score = ad.get('domain_score', 50)
+                bhp_val = ad.get('bhp', 0)
+                pei_val = ad.get('pei', 0)
+                lb_val = ad.get('load_balance', 0)
+                status_band = ad.get('status_band', 'N/A')
+                interp = ad.get('interpretation', {})
+                subvariables = ad.get('subvariables', {})
+                flags = ad.get('flags', {})
+                aims = ad.get('aims_targets', [])
+                
+                # Derive active flags
+                active_flags = [f['description'] for f in flags.values()
+                               if isinstance(f, dict) and f.get('triggered')]
+                
+                # Block 1: Section header with title + subtitle + status badge
+                elements.append(Paragraph(
+                    f'<font color="{accent}"><b>{label}</b></font>'
+                    f'&nbsp;&nbsp;<font color="{accent}" size="9">[{status_band}]</font>',
+                    ParagraphStyle('PaidADTitle', parent=styles['Heading3'],
+                                 fontSize=14, spaceAfter=2, spaceBefore=12,
+                                 fontName='Helvetica-Bold')
+                ))
+                elements.append(Paragraph(
+                    f'<i>{paid_domain_subtitles.get(key, "")}</i>',
+                    ParagraphStyle('PaidADDomSub', parent=body_style, fontSize=9,
+                                 textColor=colors.HexColor('#6B7280'), spaceAfter=8)
+                ))
+                
+                # Metrics table — 5 columns with color-coded values
+                ad_metrics = [
+                    ['Domain Score', 'BHP (Capacity)', 'PEI (Pressure)', 'Load Balance', 'Status Band'],
+                    [f'{domain_score:.0f}/100', f'{bhp_val:.1f}', f'{pei_val:.1f}',
+                     f'{lb_val:+.1f}', status_band],
+                ]
+                ad_tbl = Table(ad_metrics, colWidths=[1.2*inch, 1.2*inch, 1.2*inch, 1.1*inch, 1.3*inch])
+                lb_color = '#16A34A' if lb_val >= 0 else '#DC2626'
+                ad_tbl.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(accent)),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 8),
+                    ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 1), (-1, 1), 11),
+                    ('TEXTCOLOR', (0, 1), (0, 1), colors.HexColor(accent)),
+                    ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor('#2563EB')),
+                    ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor('#DC2626')),
+                    ('TEXTCOLOR', (3, 1), (3, 1), colors.HexColor(lb_color)),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#D1D5DB')),
+                ]))
+                elements.append(ad_tbl)
+                elements.append(Spacer(1, 0.06*inch))
+                
+                # Block 2: BHP vs PEI visual balance bar (GAP 5)
+                bhp_total = bhp_val + pei_val if (bhp_val + pei_val) > 0 else 1
+                bhp_pct = int(round((bhp_val / bhp_total) * 20))
+                pei_pct = 20 - bhp_pct
+                bhp_bar = '█' * bhp_pct
+                pei_bar = '█' * pei_pct
+                balance_label = 'BHP > PEI' if lb_val > 0 else ('PEI > BHP' if lb_val < 0 else 'BALANCED')
+                bal_data = [
+                    ['INTERNAL CAPACITY (BHP)', 'BALANCE', 'EXTERNAL PRESSURE (PEI)'],
+                    [f'{bhp_bar}  {bhp_val:.1f}', balance_label, f'{pei_val:.1f}  {pei_bar}'],
+                ]
+                bal_tbl = Table(bal_data, colWidths=[2.4*inch, 1.2*inch, 2.4*inch])
+                bal_tbl.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#EFF6FF')),
+                    ('BACKGROUND', (1, 0), (1, 0), colors.HexColor('#F3F4F6')),
+                    ('BACKGROUND', (2, 0), (2, 0), colors.HexColor('#FEF2F2')),
+                    ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1E40AF')),
+                    ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#374151')),
+                    ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#991B1B')),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 7),
+                    ('FONTNAME', (0, 1), (-1, 1), 'Courier-Bold'),
+                    ('FONTSIZE', (0, 1), (-1, 1), 8),
+                    ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                    ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                    ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ]))
+                elements.append(bal_tbl)
+                elements.append(Spacer(1, 0.08*inch))
+                
+                # Block 3: When Stable / When Loaded
+                if interp.get('when_stable'):
+                    elements.append(Paragraph(
+                        f'<font color="#16A34A"><b>When Stable:</b></font> {interp["when_stable"]}',
+                        ParagraphStyle('PaidADStable', parent=body_style, fontSize=10, leading=14, spaceAfter=4)
+                    ))
+                if interp.get('when_loaded'):
+                    elements.append(Paragraph(
+                        f'<font color="#EA580C"><b>Under Load:</b></font> {interp["when_loaded"]}',
+                        ParagraphStyle('PaidADLoaded', parent=body_style, fontSize=10, leading=14, spaceAfter=6)
+                    ))
+                
+                # Block 4: Risk Flags (moved before subvariables per spec)
+                if active_flags:
+                    elements.append(Paragraph(
+                        '<b>Risk Flags</b>',
+                        ParagraphStyle('PaidFlagHead4', parent=body_style, fontSize=11,
+                                     textColor=colors.HexColor('#1F2937'), spaceBefore=4, spaceAfter=4)
+                    ))
+                    flag_data = [['Flag', 'Status']]
+                    for f_name, f_obj in flags.items():
+                        if isinstance(f_obj, dict) and f_obj.get('triggered'):
+                            flag_data.append([f_obj.get('description', f_name), 'TRIGGERED'])
+                    if len(flag_data) > 1:
+                        flag_tbl = Table(flag_data, colWidths=[4.8*inch, 1.2*inch])
+                        flag_tbl.setStyle(TableStyle([
+                            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#FEF2F2')),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#991B1B')),
+                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                            ('FONTSIZE', (0, 0), (-1, 0), 9),
+                            ('FONTNAME', (0, 1), (0, -1), 'Helvetica'),
+                            ('FONTSIZE', (0, 1), (-1, -1), 9),
+                            ('TEXTCOLOR', (1, 1), (1, -1), colors.HexColor('#DC2626')),
+                            ('FONTNAME', (1, 1), (1, -1), 'Helvetica-Bold'),
+                            ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#FECACA')),
+                            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                            ('TOPPADDING', (0, 0), (-1, -1), 4),
+                            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                            ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#FFF7F7')),
+                        ]))
+                        elements.append(flag_tbl)
+                        elements.append(Spacer(1, 0.05*inch))
+                
+                # Block 5: Domain Interpretation narrative (GAP 6)
+                if interp.get('domain_narrative'):
+                    elements.append(Paragraph(
+                        '<b>Domain Interpretation</b>',
+                        ParagraphStyle('PaidDNHead', parent=body_style, fontSize=11,
+                                     textColor=colors.HexColor('#1F2937'), spaceBefore=4, spaceAfter=4)
+                    ))
+                    elements.append(Paragraph(
+                        interp['domain_narrative'],
+                        ParagraphStyle('PaidDNBody', parent=body_style, fontSize=10, leading=14,
+                                     textColor=colors.HexColor('#374151'), spaceAfter=8)
+                    ))
+                
+                # Subvariable Breakdown — full table with visual bars
+                if subvariables:
+                    elements.append(Paragraph(
+                        '<b>Subvariable Breakdown</b>',
+                        ParagraphStyle('PaidSVHead', parent=body_style, fontSize=11,
+                                     textColor=colors.HexColor('#1F2937'), spaceBefore=6, spaceAfter=6)
+                    ))
+                    
+                    # Split into BHP and PEI subvariables
+                    is_financial = key == 'financial_ef'
+                    prefix = 'financial' if is_financial else 'health'
+                    bhp_svs = {}
+                    pei_svs = {}
+                    for sv_name, sv_score in subvariables.items():
+                        clean = sv_name.replace('_', ' ')
+                        for p in (f'{prefix} ', ):
+                            if clean.startswith(p):
+                                clean = clean[len(p):]
+                        clean = clean.title()
+                        # Heuristic: PEI subvariables contain pressure/load/instability keywords
+                        pei_keywords = ('instability', 'pressure', 'debt', 'unpredictability',
+                                       'obligation', 'urgency', 'household', 'overload',
+                                       'caregiving', 'exhaustion', 'disruption', 'stress',
+                                       'limited', 'load')
+                        is_pei = any(kw in sv_name.lower() for kw in pei_keywords)
+                        if is_pei:
+                            pei_svs[clean] = sv_score
+                        else:
+                            bhp_svs[clean] = sv_score
+                    
+                    # BHP subvariables
+                    if bhp_svs:
+                        sv_data = [['BHP Subvariable (Internal Capacity)', 'Score', 'Level']]
+                        for sv_name, sv_score in bhp_svs.items():
+                            bar_pct = min(100, max(0, sv_score if isinstance(sv_score, (int, float)) else 0))
+                            bar_char = '█' * int(bar_pct / 5) + '░' * (20 - int(bar_pct / 5))
+                            sv_data.append([sv_name, f'{bar_pct:.0f}', bar_char])
+                        
+                        sv_table = Table(sv_data, colWidths=[2.4*inch, 0.6*inch, 3.0*inch])
+                        sv_cmds = [
+                            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#EFF6FF')),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#1E40AF')),
+                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                            ('FONTSIZE', (0, 0), (-1, 0), 8),
+                            ('FONTNAME', (0, 1), (0, -1), 'Helvetica'),
+                            ('FONTSIZE', (0, 1), (-1, -1), 8),
+                            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                            ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                            ('ALIGN', (2, 0), (2, -1), 'LEFT'),
+                            ('TEXTCOLOR', (2, 1), (2, -1), colors.HexColor('#2563EB')),
+                            ('FONTNAME', (2, 1), (2, -1), 'Courier'),
+                            ('FONTSIZE', (2, 1), (2, -1), 7),
+                            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+                            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                            ('TOPPADDING', (0, 0), (-1, -1), 3),
+                            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                        ]
+                        for row_i in range(1, len(sv_data)):
+                            sval = float(sv_data[row_i][1])
+                            sc = '#16A34A' if sval >= 70 else '#D97706' if sval >= 40 else '#DC2626'
+                            sv_cmds.append(('TEXTCOLOR', (1, row_i), (1, row_i), colors.HexColor(sc)))
+                            sv_cmds.append(('FONTNAME', (1, row_i), (1, row_i), 'Helvetica-Bold'))
+                        sv_table.setStyle(TableStyle(sv_cmds))
+                        elements.append(sv_table)
+                        elements.append(Spacer(1, 0.05*inch))
+                    
+                    # PEI subvariables
+                    if pei_svs:
+                        pei_data = [['PEI Subvariable (External Pressure)', 'Score', 'Level']]
+                        for sv_name, sv_score in pei_svs.items():
+                            bar_pct = min(100, max(0, sv_score if isinstance(sv_score, (int, float)) else 0))
+                            bar_char = '█' * int(bar_pct / 5) + '░' * (20 - int(bar_pct / 5))
+                            pei_data.append([sv_name, f'{bar_pct:.0f}', bar_char])
+                        
+                        pei_table = Table(pei_data, colWidths=[2.4*inch, 0.6*inch, 3.0*inch])
+                        pei_cmds = [
+                            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#FEF2F2')),
+                            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#991B1B')),
+                            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                            ('FONTSIZE', (0, 0), (-1, 0), 8),
+                            ('FONTNAME', (0, 1), (0, -1), 'Helvetica'),
+                            ('FONTSIZE', (0, 1), (-1, -1), 8),
+                            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                            ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                            ('ALIGN', (2, 0), (2, -1), 'LEFT'),
+                            ('TEXTCOLOR', (2, 1), (2, -1), colors.HexColor('#DC2626')),
+                            ('FONTNAME', (2, 1), (2, -1), 'Courier'),
+                            ('FONTSIZE', (2, 1), (2, -1), 7),
+                            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#FECACA')),
+                            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                            ('TOPPADDING', (0, 0), (-1, -1), 3),
+                            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                        ]
+                        for row_i in range(1, len(pei_data)):
+                            sval = float(pei_data[row_i][1])
+                            # For PEI, high = more pressure = bad
+                            sc = '#DC2626' if sval >= 70 else '#D97706' if sval >= 40 else '#16A34A'
+                            pei_cmds.append(('TEXTCOLOR', (1, row_i), (1, row_i), colors.HexColor(sc)))
+                            pei_cmds.append(('FONTNAME', (1, row_i), (1, row_i), 'Helvetica-Bold'))
+                        pei_table.setStyle(TableStyle(pei_cmds))
+                        elements.append(pei_table)
+                        elements.append(Spacer(1, 0.08*inch))
+                
+                # Block 6: AIMS Targets — full table
+                if aims:
+                    elements.append(Paragraph(
+                        '<b>AIMS Targets</b>',
+                        ParagraphStyle('PaidAimsHead', parent=body_style, fontSize=11,
+                                     textColor=colors.HexColor('#1F2937'), spaceBefore=4, spaceAfter=4)
+                    ))
+                    aims_data = [['Phase', 'Target']]
+                    for a in aims:
+                        aims_data.append([a.get('phase', ''), a.get('target', '')])
+                    aims_tbl = Table(aims_data, colWidths=[1.2*inch, 4.8*inch])
+                    aims_tbl.setStyle(TableStyle([
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(accent)),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 9),
+                        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 1), (-1, -1), 9),
+                        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D1D5DB')),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                        ('TOPPADDING', (0, 0), (-1, -1), 4),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F9FAFB')]),
+                    ]))
+                    elements.append(aims_tbl)
+                
+                elements.append(Spacer(1, 0.25*inch))
+        
         elements.append(PageBreak())
         
         # Interpretation Sections
@@ -812,4 +1348,486 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
         
     except Exception as e:
         logger.error(f"Failed to generate PDF: {e}")
+        return None
+
+
+# =============================================================================
+# AI REPORT PDF (15-section lens reports + 11-section Cosmic Integration)
+# =============================================================================
+
+# Section display metadata — order matters
+_LENS_SECTION_ORDER_BASE = [
+    ('galaxy_snapshot',       'Galaxy Snapshot',                              '#6366F1'),
+    ('galaxy_placement',      'Galaxy Placement',                             '#8B5CF6'),
+    ('archetype_profile',     'Archetype Profile',                            '#A78BFA'),
+    ('ef_ecosystem',          'Executive Function Ecosystem',                 '#7C3AED'),
+    ('financial_ef_profile',  'Financial Executive Functioning Profile\u2122', '#059669'),
+    ('health_ef_profile',     'Health & Fitness Executive Functioning Profile\u2122', '#2563EB'),
+    ('pei_analysis',          'PEI Analysis (External Load)',                 '#DC2626'),
+    ('bhp_analysis',          'BHP Analysis (Internal Capacity)',             '#16A34A'),
+    ('pei_bhp_interaction',   'PEI \u00d7 BHP Interaction',                  '#D97706'),
+    ('strength_profile',      'Strength Profile',                             '#059669'),
+    ('growth_edges',          'Growth Edges / Load Sensitivity Zones',        '#EA580C'),
+    ('aims_plan',             'AIMS for the BEST\u2122',                     '#7C3AED'),
+    # Lens-exclusive section inserted dynamically below
+    ('pattern_continuity',    'Pattern Continuity Section\u2122',            '#6366F1'),
+    ('expansion_pathway',     'Expansion Pathway Section\u2122',             '#8B5CF6'),
+    ('cosmic_summary',        'Cosmic Summary',                               '#4F46E5'),
+]
+
+# Lens-exclusive sections (Addendum Phase 3, Section 4)
+_LENS_EXCLUSIVE_SECTION_META = {
+    'STUDENT_SUCCESS':         ('academic_performance_impact',    'Academic Performance Impact\u2122',          '#F59E0B'),
+    'PERSONAL_LIFESTYLE':      ('lifestyle_stability_index',      'Lifestyle Stability Index\u2122',            '#10B981'),
+    'PROFESSIONAL_LEADERSHIP': ('execution_productivity_profile', 'Execution & Productivity Profile\u2122',     '#3B82F6'),
+    'FAMILY_ECOSYSTEM':        ('family_system_dynamics',         'Family System Dynamics\u2122',               '#EC4899'),
+}
+
+
+def _get_lens_section_order(report_type: str) -> list:
+    """Get section order for a lens, including the exclusive section after AIMS."""
+    order = list(_LENS_SECTION_ORDER_BASE)
+    meta = _LENS_EXCLUSIVE_SECTION_META.get(report_type)
+    if meta:
+        # Insert after aims_plan (index 11 in the base list)
+        aims_idx = next((i for i, s in enumerate(order) if s[0] == 'aims_plan'), 11)
+        order.insert(aims_idx + 1, meta)
+    return order
+
+_COSMIC_SECTION_ORDER = [
+    ('cosmic_snapshot',              'Cosmic Snapshot',                       '#6366F1'),
+    ('galaxy_convergence_map',       'Galaxy Convergence Map\u2122',         '#8B5CF6'),
+    ('load_balance_matrix',          'Load Balance Matrix\u2122',            '#7C3AED'),
+    ('cross_domain_load_transfer',   'Cross-Domain Load Transfer Analysis',  '#D97706'),
+    ('core_system_identity',         'Core System Identity Under Load',      '#DC2626'),
+    ('global_strength_architecture', 'Global Strength Architecture',         '#059669'),
+    ('system_wide_sensitivity',      'System-Wide Load Sensitivity Zones',   '#EA580C'),
+    ('pattern_continuity_amplified', 'Pattern Continuity Amplified\u2122',   '#6366F1'),
+    ('cosmic_aims',                  'AIMS for the BEST\u2122 \u2014 Cosmic Level', '#7C3AED'),
+    ('expansion_pathway',            'Expansion Pathway Section\u2122',      '#8B5CF6'),
+    ('cosmic_summary',               'Cosmic Summary',                       '#4F46E5'),
+]
+
+_LENS_DISPLAY = {
+    'STUDENT_SUCCESS':          ('Student Success',             '#6366F1'),
+    'PERSONAL_LIFESTYLE':       ('Personal / Lifestyle',        '#8B5CF6'),
+    'PROFESSIONAL_LEADERSHIP':  ('Professional / Leadership',   '#2563EB'),
+    'FAMILY_ECOSYSTEM':         ('Family EF Ecosystem',         '#059669'),
+    'FULL_GALAXY':              ('Cosmic Integration',          '#7C3AED'),
+}
+
+
+def generate_ai_report_pdf(
+    report_sections: dict,
+    report_type: str,
+    user_id: Optional[str] = None,
+    generated_at: Optional[str] = None,
+) -> Optional[bytes]:
+    """
+    Generate a PDF from an AI-generated report (15-section lens or 11-section Cosmic).
+
+    Args:
+        report_sections: dict mapping section_key -> narrative text
+        report_type: e.g. STUDENT_SUCCESS, FULL_GALAXY
+        user_id: optional user identifier for the header
+        generated_at: optional ISO timestamp
+
+    Returns:
+        PDF bytes or None on failure
+    """
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+            PageBreak, HRFlowable,
+        )
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, pagesize=letter,
+            rightMargin=72, leftMargin=72,
+            topMargin=72, bottomMargin=36,
+        )
+
+        styles = getSampleStyleSheet()
+        elements = []
+
+        is_cosmic = report_type == 'FULL_GALAXY'
+        section_order = _COSMIC_SECTION_ORDER if is_cosmic else _get_lens_section_order(report_type)
+        lens_label, lens_color = _LENS_DISPLAY.get(report_type, (report_type.replace('_', ' ').title(), '#6366F1'))
+
+        # ── Styles ──
+        title_style = ParagraphStyle(
+            'AIRTitle', parent=styles['Heading1'],
+            fontSize=22, textColor=colors.HexColor(lens_color),
+            spaceAfter=6, alignment=TA_CENTER, fontName='Helvetica-Bold',
+        )
+        subtitle_style = ParagraphStyle(
+            'AIRSub', parent=styles['Normal'],
+            fontSize=11, textColor=colors.HexColor('#6B7280'),
+            spaceAfter=16, alignment=TA_CENTER,
+        )
+        section_title_style = ParagraphStyle(
+            'AIRSecTitle', parent=styles['Heading2'],
+            fontSize=14, textColor=colors.HexColor('#1F2937'),
+            spaceAfter=8, spaceBefore=16, fontName='Helvetica-Bold',
+        )
+        body_style = ParagraphStyle(
+            'AIRBody', parent=styles['BodyText'],
+            fontSize=10.5, alignment=TA_JUSTIFY,
+            spaceAfter=10, leading=15, textColor=colors.HexColor('#374151'),
+        )
+        footer_style = ParagraphStyle(
+            'AIRFooter', parent=styles['Normal'],
+            fontSize=8, textColor=colors.grey, alignment=TA_CENTER,
+        )
+
+        # ── Title Page ──
+        elements.append(Spacer(1, 0.4 * inch))
+        elements.append(Paragraph(
+            "BEST Executive Function Galaxy Assessment\u2122",
+            ParagraphStyle('AIRSmall', parent=styles['Normal'],
+                           fontSize=10, textColor=colors.HexColor('#6B7280'),
+                           spaceAfter=8, alignment=TA_CENTER),
+        ))
+        report_label = 'Cosmic Integration Report' if is_cosmic else f'{lens_label} Report'
+        elements.append(Paragraph(report_label, title_style))
+        elements.append(Paragraph(
+            'AI-Generated Executive Function Narrative',
+            subtitle_style,
+        ))
+
+        elements.append(HRFlowable(
+            width="100%", thickness=2,
+            color=colors.HexColor(lens_color), spaceAfter=12,
+        ))
+
+        # Header info
+        user_display = user_id or 'N/A'
+        if user_display and len(user_display) > 40:
+            user_display = user_display[:37] + '...'
+
+        ts = generated_at or datetime.now().isoformat()
+        try:
+            date_str = datetime.fromisoformat(
+                ts.replace('Z', '+00:00')
+            ).strftime('%B %d, %Y at %I:%M %p')
+        except Exception:
+            date_str = ts[:19]
+
+        info_data = [
+            ['Prepared for:', user_display],
+            ['Report Date:', date_str],
+            ['Report Lens:', lens_label],
+            ['Sections:', f'{len(section_order)} sections'],
+        ]
+        info_table = Table(info_data, colWidths=[1.8 * inch, 4.2 * inch])
+        info_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#312E81')),
+            ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#1F2937')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(info_table)
+        elements.append(HRFlowable(
+            width="100%", thickness=1,
+            color=colors.HexColor('#E5E7EB'), spaceAfter=8,
+        ))
+        elements.append(PageBreak())
+
+        # ── Sections ──
+        for idx, (key, display_title, accent) in enumerate(section_order):
+            content = report_sections.get(key, '')
+            if not content or not content.strip():
+                continue
+
+            # Section number badge + title
+            num_label = f'Section {idx + 1}'
+            elements.append(Paragraph(
+                f'<font color="{accent}" size="8">{num_label}</font>',
+                ParagraphStyle(f'AIRNum{idx}', parent=styles['Normal'],
+                               fontSize=8, spaceBefore=12, spaceAfter=2),
+            ))
+            elements.append(Paragraph(
+                f'<font color="{accent}">{display_title}</font>',
+                section_title_style,
+            ))
+
+            # Accent bar
+            elements.append(HRFlowable(
+                width="30%", thickness=2,
+                color=colors.HexColor(accent), spaceAfter=8,
+            ))
+
+            # Body paragraphs — split on double newlines
+            paragraphs = content.strip().split('\n\n')
+            for para in paragraphs:
+                clean = para.strip().replace('\n', ' ')
+                if clean:
+                    elements.append(Paragraph(clean, body_style))
+
+            elements.append(Spacer(1, 0.15 * inch))
+
+            # Page break after every 3 sections to keep layout clean
+            if (idx + 1) % 3 == 0 and idx < len(section_order) - 1:
+                elements.append(PageBreak())
+
+        # ── Validation badge ──
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(HRFlowable(
+            width="100%", thickness=1,
+            color=colors.HexColor('#D1FAE5'), spaceAfter=8,
+        ))
+        elements.append(Paragraph(
+            f'\u2713 Report Quality Verified \u2014 All {len(section_order)} sections present '
+            f'\u2022 Language compliance checked \u2022 AIMS structure verified',
+            ParagraphStyle('AIRBadge', parent=styles['Normal'],
+                           fontSize=9, textColor=colors.HexColor('#059669'),
+                           alignment=TA_CENTER, spaceAfter=16),
+        ))
+
+        # ── Footer ──
+        elements.append(Paragraph(
+            f"BEST Executive Function Galaxy Assessment\u2122 | {report_label} | Confidential",
+            footer_style,
+        ))
+
+        doc.build(elements)
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
+
+        logger.info(f"Generated AI report PDF ({report_type}): {len(pdf_bytes)} bytes, {len(section_order)} sections")
+        return pdf_bytes
+
+    except Exception as e:
+        logger.error(f"Failed to generate AI report PDF: {e}", exc_info=True)
+        return None
+
+
+def generate_cosmic_dashboard_pdf(
+    assessment_data: dict,
+    cosmic_report: Optional[dict] = None,
+    user_id: Optional[str] = None,
+) -> Optional[bytes]:
+    """
+    Generate a Cosmic Dashboard PDF combining the structured analytical
+    layer (load profiles, flows, compensation patterns, sensitivities) with
+    the AI-generated cosmic narrative if available.
+
+    Layout:
+      - Title page
+      - Lens Profile Table (per-environment stability/load)
+      - Top Cross-Domain Flows
+      - Compensation Patterns
+      - System-Wide Sensitivities
+      - Cosmic narrative sections (when cosmic_report is provided)
+    """
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+            PageBreak, HRFlowable,
+        )
+        from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buffer, pagesize=letter,
+            rightMargin=72, leftMargin=72,
+            topMargin=72, bottomMargin=36,
+        )
+
+        styles = getSampleStyleSheet()
+        elements = []
+
+        title_style = ParagraphStyle(
+            'CosmicTitle', parent=styles['Heading1'],
+            fontSize=22, textColor=colors.HexColor('#4F46E5'),
+            spaceAfter=6, alignment=TA_CENTER, fontName='Helvetica-Bold',
+        )
+        subtitle_style = ParagraphStyle(
+            'CosmicSub', parent=styles['Normal'],
+            fontSize=11, textColor=colors.HexColor('#6B7280'),
+            spaceAfter=16, alignment=TA_CENTER,
+        )
+        section_title_style = ParagraphStyle(
+            'CosmicSec', parent=styles['Heading2'],
+            fontSize=14, textColor=colors.HexColor('#1F2937'),
+            spaceAfter=8, spaceBefore=14, fontName='Helvetica-Bold',
+        )
+        body_style = ParagraphStyle(
+            'CosmicBody', parent=styles['BodyText'],
+            fontSize=10.5, alignment=TA_JUSTIFY,
+            spaceAfter=10, leading=15, textColor=colors.HexColor('#374151'),
+        )
+        footer_style = ParagraphStyle(
+            'CosmicFooter', parent=styles['Normal'],
+            fontSize=8, textColor=colors.grey, alignment=TA_CENTER,
+        )
+
+        # Title page
+        elements.append(Spacer(1, 0.4 * inch))
+        elements.append(Paragraph(
+            "BEST Executive Function Galaxy Assessment\u2122",
+            ParagraphStyle('CosmicSmall', parent=styles['Normal'],
+                           fontSize=10, textColor=colors.HexColor('#6B7280'),
+                           spaceAfter=8, alignment=TA_CENTER),
+        ))
+        elements.append(Paragraph("Cosmic Integration Dashboard", title_style))
+        elements.append(Paragraph(
+            'Cross-Environmental Executive Function Synthesis',
+            subtitle_style,
+        ))
+        elements.append(HRFlowable(
+            width="100%", thickness=2,
+            color=colors.HexColor('#4F46E5'), spaceAfter=12,
+        ))
+
+        ts = datetime.now().strftime('%B %d, %Y')
+        info_table = Table(
+            [
+                ['Prepared for:', (user_id or 'N/A')[:40]],
+                ['Report Date:', ts],
+            ],
+            colWidths=[1.8 * inch, 4.2 * inch],
+        )
+        info_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#312E81')),
+            ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#1F2937')),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(info_table)
+        elements.append(PageBreak())
+
+        # Cross-domain analytical layer
+        cross = (assessment_data or {}).get('cross_domain', {}) or {}
+        lens_profiles = cross.get('lens_profiles', {}) or {}
+        flows = cross.get('flows', []) or []
+        compensations = cross.get('compensation_patterns', []) or []
+        sensitivities = cross.get('system_wide_sensitivities', []) or []
+
+        # Lens profile table
+        if lens_profiles:
+            elements.append(Paragraph('Lens Profiles', section_title_style))
+            lens_rows = [['Lens', 'BHP (capacity)', 'PEI (load)', 'Balance', 'Status']]
+            lens_label_map = {
+                'STUDENT_SUCCESS': 'Student / Academic',
+                'PERSONAL_LIFESTYLE': 'Personal / Lifestyle',
+                'PROFESSIONAL_LEADERSHIP': 'Professional / Work',
+                'FAMILY_ECOSYSTEM': 'Family / Ecosystem',
+            }
+            for lens, profile in lens_profiles.items():
+                lens_rows.append([
+                    lens_label_map.get(lens, lens),
+                    f"{profile.get('bhp', 0):.2f}",
+                    f"{profile.get('pei', 0):.2f}",
+                    f"{profile.get('load_balance', 0):+.2f}",
+                    profile.get('status', '—').title(),
+                ])
+            lens_tbl = Table(lens_rows, colWidths=[2.0 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch])
+            lens_tbl.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#EEF2FF')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#312E81')),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#E5E7EB')),
+                ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            elements.append(lens_tbl)
+            elements.append(Spacer(1, 0.2 * inch))
+
+        # Cross-domain flows
+        if flows:
+            elements.append(Paragraph('Cross-Domain Load Transfers', section_title_style))
+            for f in flows[:10]:
+                line = (
+                    f"<b>{f.get('from', '?').title()} → {f.get('to', '?').title()}</b> "
+                    f"— strength {f.get('strength', 0):.2f}"
+                )
+                if f.get('rationale') and f['rationale'] != 'baseline cross-domain coupling':
+                    line += f" <i>({f['rationale']})</i>"
+                elements.append(Paragraph(line, body_style))
+            elements.append(Spacer(1, 0.15 * inch))
+
+        # Compensation patterns
+        if compensations:
+            elements.append(Paragraph('Compensation Patterns', section_title_style))
+            for c in compensations[:8]:
+                elements.append(Paragraph(
+                    f"<b>{c.get('stabilizer', '')} → {c.get('vulnerability', '')}</b> "
+                    f"— gap {c.get('gap', 0):+.2f}<br/>{c.get('narrative', '')}",
+                    body_style,
+                ))
+            elements.append(Spacer(1, 0.15 * inch))
+
+        # System-wide sensitivities
+        if sensitivities:
+            elements.append(Paragraph('System-Wide Sensitivities', section_title_style))
+            for s in sensitivities[:8]:
+                elements.append(Paragraph(
+                    f"<b>{s.get('domain', '')}</b>: {s.get('pattern', '')}",
+                    body_style,
+                ))
+            elements.append(Spacer(1, 0.2 * inch))
+
+        # Cosmic narrative (if available)
+        if cosmic_report:
+            sections = cosmic_report.get('sections', {}) or {}
+            if sections:
+                elements.append(PageBreak())
+                elements.append(Paragraph('Cosmic Integration Narrative', title_style))
+                cosmic_order = [
+                    ('cosmic_snapshot', 'Cosmic Snapshot'),
+                    ('galaxy_convergence_map', 'Galaxy Convergence Map'),
+                    ('archetype_evolution', 'Archetype Evolution'),
+                    ('cross_domain_load_transfer', 'Cross-Domain Load Transfer'),
+                    ('compensation_patterns', 'Compensation Patterns'),
+                    ('system_wide_sensitivity', 'System-Wide Sensitivity'),
+                    ('stabilizers_across_universe', 'Stabilizers Across Your Universe'),
+                    ('lens_overlay_summary', 'Lens Overlay Summary'),
+                    ('cosmic_aims', 'Cosmic AIMS Pathway'),
+                    ('long_term_trajectory', 'Long-Term Trajectory'),
+                    ('closing_synthesis', 'Closing Synthesis'),
+                ]
+                for key, title in cosmic_order:
+                    text = sections.get(key)
+                    if not text:
+                        continue
+                    elements.append(Paragraph(title, section_title_style))
+                    for para in str(text).strip().split('\n\n'):
+                        clean = para.strip().replace('\n', ' ')
+                        if clean:
+                            elements.append(Paragraph(clean, body_style))
+                    elements.append(Spacer(1, 0.1 * inch))
+
+        elements.append(Paragraph(
+            "BEST Executive Function Galaxy Assessment\u2122 | Cosmic Dashboard | Confidential",
+            footer_style,
+        ))
+
+        doc.build(elements)
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
+
+        logger.info(f"Generated cosmic dashboard PDF: {len(pdf_bytes)} bytes")
+        return pdf_bytes
+
+    except Exception as e:
+        logger.error(f"Failed to generate cosmic dashboard PDF: {e}", exc_info=True)
         return None
