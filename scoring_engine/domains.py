@@ -98,8 +98,16 @@ def extract_growth_edges(domain_profiles: list[dict],
                          count: int | None = None) -> list[str]:
     """
     Section 5.6 / 5.8: Extract bottom growth edge domains.
-    Returns domain names of the bottom N lowest-scoring domains.
+    Returns domain names of the bottom N lowest-scoring CAPACITY domains.
+
+    Excludes ENVIRONMENTAL_DEMANDS for the same reason `extract_strengths`
+    does: it represents external pressure / load (PEI), not an internal
+    capacity that a user can "grow". Treating low-ENV_DEMANDS as a growth
+    edge would tell the user to develop more environmental load, which
+    inverts the spec's Layer-1 framing of Life Load as a pressure variable
+    (AI Gen Report System §3 Section 4 / Universal Prompt Rules §5).
     """
     if count is None:
         count = GROWTH_EDGES_COUNT
-    return [p["name"] for p in domain_profiles[-count:]]
+    capacity_profiles = [p for p in domain_profiles if p["name"] != "ENVIRONMENTAL_DEMANDS"]
+    return [p["name"] for p in capacity_profiles[-count:]]

@@ -97,22 +97,30 @@ def generate_ai_narrative(
 
 
 def _get_system_prompt() -> str:
-    """System prompt defining AI behavior and tone."""
-    return """You are an expert clinical psychologist specializing in executive function assessment. 
+    """System prompt defining AI behavior and tone.
 
-Your role is to translate structured assessment data into compassionate, actionable insights for individuals seeking to understand their executive functioning patterns.
+    Uses the canonical SYSTEM_PROMPT_CORE from `scoring_engine.prompts.system_prompt`
+    so this per-section / load-summary path enforces the SAME non-negotiable
+    rules as the master-template lens reports (Universal Prompt Rules §2).
+    A short addendum is appended that is specific to the short-form summaries
+    this module produces (length / second-person / Environmental Demands framing).
+    """
+    from scoring_engine.prompts.system_prompt import SYSTEM_PROMPT_CORE
 
-CRITICAL GUIDELINES:
-- Use strength-based, non-pathologizing language
-- Avoid terms like "deficit", "disorder", "failure", "broken"
-- Emphasize capacity, growth, and alignment
-- Be specific and actionable, not generic
-- Write in second person ("you", "your")
-- Keep paragraphs concise (2-4 sentences)
-- Focus on patterns, not judgments
-- IMPORTANT: Environmental Demands represents EXTERNAL PRESSURE on the system, NOT internal capacity or strength. A high Environmental Demands score means HIGH LOAD/STRAIN, not high performance. Never describe Environmental Demands as a strength or positive anchor. Frame it as demand, pressure, or load that the system must manage.
+    short_form_addendum = """
 
-TONE: Professional yet warm, empowering, evidence-based."""
+## SHORT-FORM OUTPUT RULES (specific to ScoreCard / per-section summaries)
+
+- Write in the second person ("you", "your").
+- Keep paragraphs concise (2-4 sentences) unless a section explicitly asks for more.
+- Be specific and actionable; avoid generic filler.
+- Environmental Demands represents EXTERNAL PRESSURE on the system, not internal
+  capacity or strength. A high Environmental Demands score means high load/strain,
+  not high performance. Never describe Environmental Demands as a strength or
+  positive anchor. Frame it as demand, pressure, or load that the system must
+  manage."""
+
+    return SYSTEM_PROMPT_CORE + short_form_addendum
 
 
 def _build_prompt(section_name: str, scoring_data: dict, report_type: str) -> str:
