@@ -299,44 +299,65 @@ def create_app(use_database: bool = False) -> FastAPI:
     @app.post("/api/v1/auth/signup")
     def signup(request: dict):
         """Create a new user account."""
-        from scoring_engine.auth_service import create_user
-        
-        email = request.get('email')
+        from scoring_engine.auth_service import (
+            create_user,
+            DuplicateEmailError,
+            is_valid_email,
+            normalize_email,
+        )
+
+        email = normalize_email(request.get('email'))
         password = request.get('password')
         name = request.get('name')
         demographics = request.get('demographics')
-        
+
         if not email or not password:
             raise HTTPException(status_code=400, detail="Email and password are required")
-        
+
+        if not is_valid_email(email):
+            raise HTTPException(status_code=400, detail="Please enter a valid email address")
+
         if len(password) < 6:
             raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-        
-        user = create_user(email, password, name, demographics)
-        
+
+        try:
+            user = create_user(email, password, name, demographics)
+        except DuplicateEmailError:
+            # 409 = the request is well-formed but conflicts with existing state.
+            # We include a structured `code` so the frontend can offer a
+            # "Log in instead" CTA without string-matching the message.
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "email_exists",
+                    "message": "An account with this email already exists. Please log in instead.",
+                },
+            )
+
         if not user:
-            raise HTTPException(status_code=400, detail="User already exists or creation failed")
-        
-        logger.info(f"New user signed up: {email}")
+            # Genuine creation failure (DB unreachable, validation, etc.).
+            raise HTTPException(status_code=500, detail="Failed to create account. Please try again.")
+
+        logger.info("New user signed up: %s", email)
         return {"success": True, "user": user}
 
     @app.post("/api/v1/auth/login")
     def login(request: dict):
         """Authenticate a user and return session token."""
-        from scoring_engine.auth_service import authenticate_user
-        
-        email = request.get('email')
+        from scoring_engine.auth_service import authenticate_user, normalize_email
+
+        email = normalize_email(request.get('email'))
         password = request.get('password')
-        
+
         if not email or not password:
             raise HTTPException(status_code=400, detail="Email and password are required")
-        
+
         user = authenticate_user(email, password)
-        
+
         if not user:
             raise HTTPException(status_code=401, detail="Invalid email or password")
-        
-        logger.info(f"User logged in: {email}")
+
+        logger.info("User logged in: %s", email)
         return {"success": True, "user": user}
 
     @app.get("/api/v1/auth/user/{email}")

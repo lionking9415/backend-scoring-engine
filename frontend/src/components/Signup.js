@@ -7,21 +7,25 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
+  const [emailExists, setEmailExists] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setEmailExists(false);
     setLoading(true);
 
-    // Validate email
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    // Match backend normalization so client-side validation accepts the
+    // same inputs the server will accept.
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setError('Please enter a valid email address');
       setLoading(false);
       return;
     }
 
-    // Validate password
     if (password.length < 6) {
       setError('Password must be at least 6 characters');
       setLoading(false);
@@ -38,23 +42,31 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
 
     try {
       const response = await axios.post('/api/v1/auth/signup', {
-        email,
+        email: cleanEmail,
         password,
-        name: name || email.split('@')[0],
+        name: (name || cleanEmail.split('@')[0]).trim(),
       });
 
       if (response.data.success) {
-        // Signup successful - auto-login
         onSignup(response.data.user);
       } else {
         setError('Signup failed. Please try again.');
       }
     } catch (err) {
       console.error('Signup error:', err);
-      if (err.response?.status === 400) {
-        setError(err.response.data.detail || 'User already exists. Please log in.');
-      } else if (err.response?.data?.detail) {
-        setError(err.response.data.detail);
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail;
+      // FastAPI sends our structured detail as an object: {code, message}.
+      const code = detail && typeof detail === 'object' ? detail.code : null;
+      const message = detail && typeof detail === 'object' ? detail.message : detail;
+
+      if (status === 409 || code === 'email_exists') {
+        setEmailExists(true);
+        setError(message || 'An account with this email already exists.');
+      } else if (status === 400) {
+        setError(message || 'Please check your input and try again.');
+      } else if (message) {
+        setError(message);
       } else {
         setError('Signup failed. Please try again.');
       }
@@ -135,7 +147,16 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
 
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-              {error}
+              <div>{error}</div>
+              {emailExists && (
+                <button
+                  type="button"
+                  onClick={onSwitchToLogin}
+                  className="mt-2 text-indigo-600 hover:text-indigo-800 font-semibold underline"
+                >
+                  Log in instead →
+                </button>
+              )}
             </div>
           )}
 

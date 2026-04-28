@@ -12,8 +12,11 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
     setError('');
     setLoading(true);
 
-    // Validate email
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    // Mirror backend email normalization so users aren't tripped up by
+    // accidental capitalization or trailing whitespace.
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       setError('Please enter a valid email address');
       setLoading(false);
       return;
@@ -26,24 +29,25 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
     }
 
     try {
-      // Call backend authentication API
       const response = await axios.post('/api/v1/auth/login', {
-        email,
-        password
+        email: cleanEmail,
+        password,
       });
 
       if (response.data.success) {
-        // Login successful
         onLogin(response.data.user);
       } else {
         setError('Login failed. Please try again.');
       }
     } catch (err) {
       console.error('Login error:', err);
-      if (err.response?.status === 401) {
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail;
+      const message = detail && typeof detail === 'object' ? detail.message : detail;
+      if (status === 401) {
         setError('Invalid email or password');
-      } else if (err.response?.data?.detail) {
-        setError(err.response.data.detail);
+      } else if (message) {
+        setError(message);
       } else {
         setError('Login failed. Please try again.');
       }
