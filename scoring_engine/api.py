@@ -1053,6 +1053,11 @@ def create_app(use_database: bool = False) -> FastAPI:
     def get_cosmic_report(user_id: str, assessment_id: str):
         """Retrieve a previously generated FULL_GALAXY (cosmic) report."""
         require_paid_product(assessment_id, "COSMIC_BUNDLE")
+        # Strip leftover `**` markdown markers from reports persisted by an
+        # older version of the section flattener — keeps prior cosmic
+        # generations readable without forcing a paid regenerate.
+        from scoring_engine.report_generator import _sanitize_stored_sections
+
         try:
             from scoring_engine.supabase_client import get_supabase_client
             client = get_supabase_client()
@@ -1068,7 +1073,7 @@ def create_app(use_database: bool = False) -> FastAPI:
                     .execute()
                 )
                 if response.data:
-                    return response.data[0]
+                    return _sanitize_stored_sections(response.data[0])
         except Exception as e:
             logger.debug(f"Cosmic report DB lookup failed: {e}")
 
@@ -1078,7 +1083,7 @@ def create_app(use_database: bool = False) -> FastAPI:
             if (rdata.get("user_id") == user_id
                     and rdata.get("assessment_id") == assessment_id
                     and rdata.get("report_type") == "FULL_GALAXY"):
-                return rdata
+                return _sanitize_stored_sections(rdata)
 
         raise HTTPException(status_code=404, detail="No cosmic report found for this assessment")
 

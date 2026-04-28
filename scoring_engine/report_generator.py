@@ -35,14 +35,34 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 
+def _humanize_key(key: Any) -> str:
+    """Turn `high_stability_zones` into `High Stability Zones`.
+
+    Uses title-case so multi-word section labels look like proper headings
+    rather than sentence fragments.
+    """
+    s = str(key).replace("_", " ").strip()
+    if not s:
+        return ""
+    return s.title()
+
+
 def _stringify_section_value(value: Any) -> str:
     """Flatten any AI-returned section value into a readable narrative string.
 
-    Handles strings (passthrough), scalars (str()), dicts (rendered as
-    labeled paragraphs preserving sub-structure), and lists (rendered as
-    bullets when items are short, paragraphs otherwise). Returns "" for
-    None / empty containers so the validator's empty-section check still
-    triggers correctly.
+    Output uses plain text only — no markdown `**bold**` markers — because
+    the frontend treats sections as plain text (splitting on `\\n\\n` for
+    paragraphs and `\\n` for line breaks) and the PDF renderer also benefits
+    from un-marked text.
+
+    Hierarchy is conveyed structurally:
+      - `dict[str -> scalar]`           → "Label: value" lines joined by blank lines
+      - `dict[str -> dict[str,scalar]]` → "Outer:\\n- Inner: value\\n- Inner: value"
+      - `list[scalar]`                  → bulleted list ("- item")
+      - everything else                 → recursive render
+
+    Returns "" for None / empty containers so the validator's empty-section
+    check still fires correctly.
     """
     if value is None:
         return ""
@@ -53,27 +73,74 @@ def _stringify_section_value(value: Any) -> str:
     if isinstance(value, (int, float)):
         return str(value)
     if isinstance(value, dict):
-        parts: list[str] = []
-        for k, v in value.items():
-            sub = _stringify_section_value(v)
-            if not sub:
-                continue
-            label = str(k).replace("_", " ").strip()
-            label = label[:1].upper() + label[1:] if label else ""
-            parts.append(f"**{label}**: {sub}" if label else sub)
-        return "\n\n".join(parts)
+        return _render_dict(value)
     if isinstance(value, list):
-        items = [_stringify_section_value(v) for v in value]
-        items = [i for i in items if i]
-        if not items:
-            return ""
-        # Render as a bulleted list when each item is a short single-line
-        # string (typical for "key takeaways" style sections); otherwise
-        # join as paragraphs.
-        if all(len(i) < 200 and "\n" not in i for i in items):
-            return "\n".join(f"- {i}" for i in items)
-        return "\n\n".join(items)
+        return _render_list(value)
     return str(value)
+
+
+def _render_dict(d: dict) -> str:
+    parts: list[str] = []
+    for k, v in d.items():
+        if v is None or v == "" or v == [] or v == {}:
+            continue
+        label = _humanize_key(k)
+
+        # dict-of-scalars → "Label:" header followed by bulleted children.
+        # This is the common AI mis-shape (e.g. `{"high_stability_zones":
+        # {"personal": "...", "academic": "..."}}`) that previously rendered
+        # as a single mashed line with literal asterisks.
+        if isinstance(v, dict) and v and all(
+            isinstance(sv, (str, int, float, bool)) and sv not in (None, "")
+            for sv in v.values()
+        ):
+            bullets: list[str] = []
+            for sk, sv in v.items():
+                sub_label = _humanize_key(sk)
+                sub_text = _stringify_section_value(sv).strip()
+                if not sub_text:
+                    continue
+                bullets.append(f"- {sub_label}: {sub_text}" if sub_label else f"- {sub_text}")
+            if bullets:
+                if label:
+                    parts.append(f"{label}:\n" + "\n".join(bullets))
+                else:
+                    parts.append("\n".join(bullets))
+            continue
+
+        # Generic recursion for nested dicts / lists.
+        if isinstance(v, dict):
+            inner = _render_dict(v).strip()
+        elif isinstance(v, list):
+            inner = _render_list(v).strip()
+        else:
+            inner = _stringify_section_value(v).strip()
+
+        if not inner:
+            continue
+
+        # Multi-line sub-content gets its own line under the label so the
+        # frontend's `\\n\\n` paragraph split keeps the hierarchy visible.
+        if label and "\n" in inner:
+            parts.append(f"{label}:\n{inner}")
+        elif label:
+            parts.append(f"{label}: {inner}")
+        else:
+            parts.append(inner)
+
+    return "\n\n".join(parts)
+
+
+def _render_list(lst: list) -> str:
+    items = [_stringify_section_value(v).strip() for v in lst]
+    items = [i for i in items if i]
+    if not items:
+        return ""
+    # Bulleted list when every item is short and single-line; otherwise
+    # paragraph-joined so the frontend splits them correctly.
+    if all(len(i) < 200 and "\n" not in i for i in items):
+        return "\n".join(f"- {i}" for i in items)
+    return "\n\n".join(items)
 
 
 def _normalize_sections(sections: Any) -> dict:
@@ -1005,6 +1072,34 @@ def store_report(
         return report_id
 
 
+def _sanitize_stored_sections(report: Optional[dict]) -> Optional[dict]:
+    """Strip leftover `**bold**` markers from previously-saved reports.
+
+    Reports generated before the section-flattener was cleaned up may have
+    been persisted with literal asterisks in their text (e.g. "**Personal**:
+    ..."). Rather than forcing users to regenerate (and paying OpenAI for
+    a redo), we strip the markers on read. New generations are already
+    clean — this is a no-op for them.
+    """
+    if not report:
+        return report
+    sections = report.get("sections")
+    if not isinstance(sections, dict):
+        return report
+    cleaned = {}
+    for k, v in sections.items():
+        if isinstance(v, str) and "**" in v:
+            # `**Label**: value` → `Label: value`. Use a non-greedy match
+            # so we only strip the wrapper, never internal asterisks.
+            import re as _re
+            cleaned[k] = _re.sub(r"\*\*(.*?)\*\*", r"\1", v)
+        else:
+            cleaned[k] = v
+    if cleaned != sections:
+        report = {**report, "sections": cleaned}
+    return report
+
+
 def get_report(report_id: str) -> Optional[dict]:
     """Retrieve a generated report by ID."""
     # Try database
@@ -1019,17 +1114,22 @@ def get_report(report_id: str) -> Optional[dict]:
             .execute()
         )
         if response.data:
-            return response.data
+            return _sanitize_stored_sections(response.data)
     except Exception as e:
         logger.warning(f"DB lookup failed: {e}")
 
     # Fallback to memory
-    return _report_store.get(report_id)
+    return _sanitize_stored_sections(_report_store.get(report_id))
 
 
 def get_user_lens_reports(user_id: str, assessment_id: str) -> dict[str, dict]:
     """Get all lens reports for a user's assessment. Returns {lens_type: sections}."""
     reports = {}
+
+    def _clean(sections):
+        # Reuse the sanitizer by wrapping sections in a fake report dict.
+        sanitized = _sanitize_stored_sections({"sections": sections}) or {}
+        return sanitized.get("sections", sections)
 
     # Try database
     try:
@@ -1045,7 +1145,7 @@ def get_user_lens_reports(user_id: str, assessment_id: str) -> dict[str, dict]:
         )
         if response.data:
             for r in response.data:
-                reports[r["report_type"]] = r["sections"]
+                reports[r["report_type"]] = _clean(r["sections"])
             return reports
     except Exception as e:
         logger.warning(f"DB lookup failed: {e}")
@@ -1055,7 +1155,7 @@ def get_user_lens_reports(user_id: str, assessment_id: str) -> dict[str, dict]:
         if (rdata.get("user_id") == user_id and
             rdata.get("assessment_id") == assessment_id and
             rdata.get("report_type") != "FULL_GALAXY"):
-            reports[rdata["report_type"]] = rdata["sections"]
+            reports[rdata["report_type"]] = _clean(rdata["sections"])
 
     return reports
 

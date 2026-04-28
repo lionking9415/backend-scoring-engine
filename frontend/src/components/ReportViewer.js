@@ -134,35 +134,78 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
     if (!assessmentId || !userEmail) return;
     setLoading(true);
     try {
+      // Step 1 — pull the four lens reports + their IDs.
+      // Note: the backend `get_user_lens_reports` excludes FULL_GALAXY, so
+      // `res.data.reports` will never contain the cosmic narrative even
+      // if one is saved. Cosmic is loaded separately below (Step 3).
       const res = await axios.get(`/api/v1/reports/user/${userEmail}/assessment/${assessmentId}`);
+      let nextReports = {};
+      let nextReportIds = {};
+      let mergedPaidProducts = paidProducts || [];
+
       if (res.data.success && res.data.reports) {
-        // Backend returns { LENS: sections } or { LENS: null } if locked.
-        // Strip null entries so they're treated as not-yet-generated, then
-        // remember which lenses the backend considers paid.
-        const cleaned = Object.fromEntries(
+        nextReports = Object.fromEntries(
           Object.entries(res.data.reports).filter(([, v]) => v && Object.keys(v).length > 0)
         );
-        setReports(cleaned);
         if (res.data.report_ids) {
-          setReportIds(res.data.report_ids);
+          nextReportIds = { ...res.data.report_ids };
         }
         if (res.data.paid_products) {
-          setPaidProducts(res.data.paid_products);
-        }
-        const keys = Object.keys(cleaned);
-        if (keys.length > 0 && !activeReport) {
-          setActiveReport(keys[0]);
+          mergedPaidProducts = res.data.paid_products;
         }
       }
 
-      const cosmicRes = await axios.get(`/api/v1/cosmic/eligibility/${userEmail}/${assessmentId}`);
-      if (cosmicRes.data.success) {
-        setCosmicEligible(cosmicRes.data.eligible);
-        setCosmicMissing(cosmicRes.data.missing_lenses || []);
-        setCosmicPaymentEligible(!!cosmicRes.data.payment_eligible);
-        if (cosmicRes.data.paid_products) {
-          setPaidProducts(cosmicRes.data.paid_products);
+      // Step 2 — cosmic eligibility (also refreshes paid_products).
+      let cosmicPaid = mergedPaidProducts.includes('COSMIC_BUNDLE');
+      try {
+        const cosmicRes = await axios.get(`/api/v1/cosmic/eligibility/${userEmail}/${assessmentId}`);
+        if (cosmicRes.data.success) {
+          setCosmicEligible(cosmicRes.data.eligible);
+          setCosmicMissing(cosmicRes.data.missing_lenses || []);
+          setCosmicPaymentEligible(!!cosmicRes.data.payment_eligible);
+          if (cosmicRes.data.paid_products) {
+            mergedPaidProducts = cosmicRes.data.paid_products;
+            cosmicPaid = mergedPaidProducts.includes('COSMIC_BUNDLE');
+          }
         }
+      } catch (err) {
+        console.warn('Cosmic eligibility check failed:', err);
+      }
+
+      // Step 3 — pull the saved cosmic narrative if the user has paid for it.
+      // Without this, every browser refresh would force the user back through
+      // a fresh generation (re-spending OpenAI tokens) even though the report
+      // was already persisted on the server.
+      if (cosmicPaid) {
+        try {
+          const cosmicReportRes = await axios.get(
+            `/api/v1/cosmic/report/${userEmail}/${assessmentId}`,
+          );
+          const data = cosmicReportRes.data;
+          if (data?.sections && Object.keys(data.sections).length > 0) {
+            nextReports = { ...nextReports, FULL_GALAXY: data.sections };
+            const cosmicId = data.id || data.report_id;
+            if (cosmicId) {
+              nextReportIds = { ...nextReportIds, FULL_GALAXY: cosmicId };
+            }
+          }
+        } catch (err) {
+          // 404 simply means no cosmic generated yet — not an error worth
+          // surfacing. Anything else is logged for diagnostics.
+          if (err.response?.status !== 404) {
+            console.warn('Failed to load saved cosmic report:', err);
+          }
+        }
+      }
+
+      setReports(nextReports);
+      setReportIds(nextReportIds);
+      setPaidProducts(mergedPaidProducts);
+      const keys = Object.keys(nextReports);
+      if (keys.length > 0 && !activeReport) {
+        // Prefer FULL_GALAXY when present so users land on the cosmic
+        // narrative they paid for, otherwise the first available lens.
+        setActiveReport(keys.includes('FULL_GALAXY') ? 'FULL_GALAXY' : keys[0]);
       }
     } catch (err) {
       console.error('Failed to load reports:', err);
