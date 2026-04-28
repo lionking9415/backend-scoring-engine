@@ -19,6 +19,49 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+def _make_progress_bar(pct, width_inch: float = 1.7, height_pt: float = 9,
+                       fill_color: str = '#2563EB',
+                       track_color: str = '#E5E7EB'):
+    """Return a reportlab `Drawing` containing a proportional 0-100% bar.
+
+    Replaces the Unicode block-character bars (`█` / `░`) used previously,
+    which rendered as identical placeholder boxes in the standard Type-1
+    Courier font (those glyphs are not in the font, so each row looked the
+    same regardless of score). Using vector primitives guarantees the bar
+    width is accurately proportional to the value.
+    """
+    from reportlab.graphics.shapes import Drawing, Rect
+    from reportlab.lib import colors as rl_colors
+    from reportlab.lib.units import inch as _inch
+
+    try:
+        value = float(pct)
+    except (TypeError, ValueError):
+        value = 0.0
+    value = max(0.0, min(100.0, value))
+
+    width_pt = width_inch * _inch
+    d = Drawing(width_pt, height_pt)
+
+    # Track (background)
+    d.add(Rect(
+        0, 0, width_pt, height_pt,
+        fillColor=rl_colors.HexColor(track_color),
+        strokeColor=rl_colors.HexColor('#D1D5DB'),
+        strokeWidth=0.5,
+    ))
+    # Filled portion
+    fill_w = width_pt * (value / 100.0)
+    if fill_w > 0:
+        d.add(Rect(
+            0, 0, fill_w, height_pt,
+            fillColor=rl_colors.HexColor(fill_color),
+            strokeColor=rl_colors.HexColor(fill_color),
+            strokeWidth=0,
+        ))
+    return d
+
+
 def _get_user_name(user_id: str) -> str:
     """Fetch user name from users table, fallback to email."""
     try:
@@ -177,48 +220,65 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         
         # ── 2. EXECUTIVE FUNCTION CONSTELLATION (4 grouped domains) ──
         elements.append(Paragraph("Your Executive Function Constellation", heading_style))
-        
-        constellation_data = [['Domain Group', 'Tag', 'Score', 'Percentage']]
-        row_colors_map = []  # track domain colors per row
+
+        # Per-cell paragraph styles. Wrapping is enabled by passing Paragraph
+        # objects (instead of raw strings) into the Table — this prevents long
+        # names like "Cognitive & Motivational Systems" from overflowing into
+        # the next column.
+        const_header_style = ParagraphStyle(
+            'ConstHeader', parent=styles['Normal'], fontName='Helvetica-Bold',
+            fontSize=10, textColor=colors.whitesmoke, alignment=TA_CENTER, leading=12,
+        )
+        const_tag_style = ParagraphStyle(
+            'ConstTag', parent=styles['Normal'], fontName='Helvetica',
+            fontSize=9, textColor=colors.HexColor('#6B7280'), alignment=TA_LEFT, leading=11,
+        )
+        const_score_style = ParagraphStyle(
+            'ConstScore', parent=styles['Normal'], fontName='Helvetica',
+            fontSize=10, textColor=colors.HexColor('#1F2937'), alignment=TA_CENTER, leading=12,
+        )
+        const_pct_style = ParagraphStyle(
+            'ConstPct', parent=styles['Normal'], fontName='Helvetica',
+            fontSize=10, textColor=colors.HexColor('#1F2937'), alignment=TA_CENTER, leading=12,
+        )
+
+        constellation_data = [[
+            Paragraph('Domain Group', const_header_style),
+            Paragraph('Tag', const_header_style),
+            Paragraph('Score', const_header_style),
+            Paragraph('Percentage', const_header_style),
+        ]]
         for group in constellation:
             pct = group.get('percentage', 0)
             meta = DOMAIN_META.get(group['name'], {'tag': '', 'color': '#6B7280'})
             is_env = group['name'] == 'Environmental Demands'
-            display_name = '⚠️ Env. Pressure Load (PEI)' if is_env else group['name']
+            display_name = 'Env. Pressure Load (PEI)' if is_env else group['name']
             display_tag = 'Higher = More Pressure' if is_env else meta['tag']
             display_pct = f"{pct}% ({'High Pressure' if pct >= 80 else 'Moderate Pressure' if pct >= 60 else pct})" if is_env else f"{pct}%"
+
+            name_style = ParagraphStyle(
+                f"ConstName_{group['name']}", parent=styles['Normal'],
+                fontName='Helvetica-Bold', fontSize=10,
+                textColor=colors.HexColor(meta['color']),
+                alignment=TA_LEFT, leading=12,
+            )
             constellation_data.append([
-                display_name,
-                display_tag,
-                f"{group['score']:.3f}",
-                display_pct
+                Paragraph(display_name, name_style),
+                Paragraph(display_tag, const_tag_style),
+                Paragraph(f"{group['score']:.3f}", const_score_style),
+                Paragraph(display_pct, const_pct_style),
             ])
-            row_colors_map.append(meta['color'])
-        
+
         const_table = Table(constellation_data, colWidths=[2.2 * inch, 1.6 * inch, 1.1 * inch, 1.1 * inch])
-        table_style_cmds = [
+        const_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4F46E5')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-            ('ALIGN', (1, 1), (1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#D1D5DB')),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('FONTSIZE', (1, 1), (1, -1), 9),
-            ('TEXTCOLOR', (1, 1), (1, -1), colors.HexColor('#6B7280')),
             ('LEFTPADDING', (0, 0), (-1, -1), 8),
             ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-        ]
-        # Apply domain colors to each row
-        for i, dc in enumerate(row_colors_map):
-            row_idx = i + 1
-            table_style_cmds.append(('TEXTCOLOR', (0, row_idx), (0, row_idx), colors.HexColor(dc)))
-            table_style_cmds.append(('FONTNAME', (0, row_idx), (0, row_idx), 'Helvetica-Bold'))
-        const_table.setStyle(TableStyle(table_style_cmds))
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
         elements.append(const_table)
         elements.append(Spacer(1, 0.2 * inch))
         
@@ -414,17 +474,33 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
                                  textColor=colors.HexColor('#6B7280'), spaceAfter=6)
                 ))
                 
-                # Metrics table — 5 columns matching web report
+                # Metrics table — 5 columns matching web report.
+                # Status Band is wrapped in a Paragraph so multi-word labels
+                # (e.g. "Stable but Vulnerable") wrap inside the cell instead
+                # of overflowing into neighboring columns.
+                lb_color = '#16A34A' if lb_val >= 0 else '#DC2626'
+                status_band_style = ParagraphStyle(
+                    'StatusBandFree', parent=styles['Normal'],
+                    fontName='Helvetica-Bold', fontSize=10,
+                    textColor=colors.HexColor('#1F2937'),
+                    alignment=TA_CENTER, leading=12,
+                )
                 ad_data = [
                     ['Domain Score', 'BHP (Capacity)', 'PEI (Pressure)', 'Load Balance', 'Status Band'],
-                    [f'{domain_score:.0f}/100', f'{bhp_val:.1f}', f'{pei_val:.1f}', f'{lb_val:+.1f}', status_band],
+                    [
+                        f'{domain_score:.0f}/100',
+                        f'{bhp_val:.1f}',
+                        f'{pei_val:.1f}',
+                        f'{lb_val:+.1f}',
+                        Paragraph(status_band, status_band_style),
+                    ],
                 ]
-                ad_table = Table(ad_data, colWidths=[1.2 * inch, 1.2 * inch, 1.2 * inch, 1.1 * inch, 1.3 * inch])
-                lb_color = '#16A34A' if lb_val >= 0 else '#DC2626'
+                ad_table = Table(ad_data, colWidths=[1.1 * inch, 1.2 * inch, 1.2 * inch, 1.1 * inch, 1.4 * inch])
                 ad_table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(accent)),
                     ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                     ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                     ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                     ('FONTSIZE', (0, 0), (-1, 0), 8),
                     ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
@@ -440,32 +516,51 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
                 elements.append(ad_table)
                 elements.append(Spacer(1, 0.06 * inch))
                 
-                # Block 2: BHP vs PEI visual balance bar (GAP 5)
+                # Block 2: BHP vs PEI visual balance bar (GAP 5).
+                # Bars are rendered as vector Drawings sized in proportion to
+                # each side's share of the (BHP + PEI) total — this replaces
+                # the previous Unicode block string which all rendered as
+                # identical missing-glyph boxes in Courier-Bold.
                 bhp_total = bhp_val + pei_val if (bhp_val + pei_val) > 0 else 1
-                bhp_pct = int(round((bhp_val / bhp_total) * 20))
-                pei_pct = 20 - bhp_pct
-                bhp_bar = '█' * bhp_pct
-                pei_bar = '█' * pei_pct
+                bhp_share_pct = round((bhp_val / bhp_total) * 100)
+                pei_share_pct = round((pei_val / bhp_total) * 100)
                 balance_label = 'BHP > PEI' if lb_val > 0 else ('PEI > BHP' if lb_val < 0 else 'BALANCED')
                 bal_data = [
-                    ['INTERNAL CAPACITY (BHP)', 'BALANCE', 'EXTERNAL PRESSURE (PEI)'],
-                    [f'{bhp_bar}  {bhp_val:.1f}', balance_label, f'{pei_val:.1f}  {pei_bar}'],
+                    ['INTERNAL CAPACITY (BHP)', '', 'BALANCE', '', 'EXTERNAL PRESSURE (PEI)'],
+                    [
+                        _make_progress_bar(bhp_share_pct, width_inch=1.7, fill_color='#2563EB'),
+                        f'{bhp_val:.1f}',
+                        balance_label,
+                        f'{pei_val:.1f}',
+                        _make_progress_bar(pei_share_pct, width_inch=1.7, fill_color='#DC2626'),
+                    ],
                 ]
-                bal_tbl = Table(bal_data, colWidths=[2.4 * inch, 1.2 * inch, 2.4 * inch])
+                bal_tbl = Table(
+                    bal_data,
+                    colWidths=[1.8 * inch, 0.45 * inch, 1.5 * inch, 0.45 * inch, 1.8 * inch],
+                )
                 bal_tbl.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#EFF6FF')),
-                    ('BACKGROUND', (1, 0), (1, 0), colors.HexColor('#F3F4F6')),
-                    ('BACKGROUND', (2, 0), (2, 0), colors.HexColor('#FEF2F2')),
-                    ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1E40AF')),
-                    ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#374151')),
-                    ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#991B1B')),
+                    ('SPAN', (0, 0), (1, 0)),
+                    ('SPAN', (3, 0), (4, 0)),
+                    ('BACKGROUND', (0, 0), (1, 0), colors.HexColor('#EFF6FF')),
+                    ('BACKGROUND', (2, 0), (2, 0), colors.HexColor('#F3F4F6')),
+                    ('BACKGROUND', (3, 0), (4, 0), colors.HexColor('#FEF2F2')),
+                    ('TEXTCOLOR', (0, 0), (1, 0), colors.HexColor('#1E40AF')),
+                    ('TEXTCOLOR', (2, 0), (2, 0), colors.HexColor('#374151')),
+                    ('TEXTCOLOR', (3, 0), (4, 0), colors.HexColor('#991B1B')),
                     ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                     ('FONTSIZE', (0, 0), (-1, 0), 7),
-                    ('FONTNAME', (0, 1), (-1, 1), 'Courier-Bold'),
-                    ('FONTSIZE', (0, 1), (-1, 1), 8),
+                    ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 1), (-1, 1), 9),
+                    ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor('#1E40AF')),
+                    ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor('#374151')),
+                    ('TEXTCOLOR', (3, 1), (3, 1), colors.HexColor('#991B1B')),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                     ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-                    ('ALIGN', (1, 0), (1, -1), 'CENTER'),
-                    ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+                    ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+                    ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+                    ('ALIGN', (3, 0), (3, -1), 'RIGHT'),
+                    ('ALIGN', (4, 0), (4, -1), 'RIGHT'),
                     ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
                     ('TOPPADDING', (0, 0), (-1, -1), 4),
@@ -493,7 +588,7 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
                                      textColor=colors.HexColor('#374151'), spaceBefore=2, spaceAfter=4)
                     ))
                     flags_text = '&nbsp;&nbsp;|&nbsp;&nbsp;'.join(
-                        f'<font color="#DC2626">⚠ {f}</font>' for f in active_flags
+                        f'<font color="#DC2626"><b>!</b> {f}</font>' for f in active_flags
                     )
                     elements.append(Paragraph(
                         flags_text,
@@ -521,16 +616,42 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
                                      textColor=colors.HexColor('#374151'), spaceBefore=4, spaceAfter=4)
                     ))
                     sv_data = [['Subvariable', 'Score', 'Bar']]
+                    sv_bar_pcts = []  # parallel list, bar drawn after color is decided
                     for sv_name, sv_score in subvariables.items():
                         clean_name = sv_name.replace('_', ' ')
                         for prefix in ('financial ', 'health '):
                             if clean_name.startswith(prefix):
                                 clean_name = clean_name[len(prefix):]
                         clean_name = clean_name.title()
-                        bar_pct = min(100, max(0, sv_score if isinstance(sv_score, (int, float)) else 0))
-                        bar_char = '█' * int(bar_pct / 5) + '░' * (20 - int(bar_pct / 5))
-                        sv_data.append([clean_name, f'{bar_pct:.0f}', bar_char])
-                    
+                        try:
+                            bar_pct = float(sv_score)
+                        except (TypeError, ValueError):
+                            bar_pct = 0.0
+                        bar_pct = max(0.0, min(100.0, bar_pct))
+                        sv_bar_pcts.append(bar_pct)
+                        # Placeholder; replaced with a real Drawing right after
+                        # we know the row's accent color.
+                        sv_data.append([clean_name, f'{bar_pct:.0f}', ''])
+
+                    # Pre-compute per-row colors and then inject proportional
+                    # bar Drawings into column 2 so the bar visually matches
+                    # the score (replaces unicode block chars that the
+                    # standard Type-1 fonts can't render).
+                    row_colors = []
+                    for row_i in range(1, len(sv_data)):
+                        score_val = float(sv_data[row_i][1])
+                        if score_val >= 70:
+                            sc = '#16A34A'
+                        elif score_val >= 40:
+                            sc = '#D97706'
+                        else:
+                            sc = '#DC2626'
+                        row_colors.append(sc)
+                        sv_data[row_i][2] = _make_progress_bar(
+                            sv_bar_pcts[row_i - 1], width_inch=2.6,
+                            fill_color=sc,
+                        )
+
                     sv_table = Table(sv_data, colWidths=[2.4 * inch, 0.6 * inch, 3.0 * inch])
                     sv_style_cmds = [
                         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F3F4F6')),
@@ -541,22 +662,13 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
                         ('ALIGN', (0, 0), (0, -1), 'LEFT'),
                         ('ALIGN', (1, 0), (1, -1), 'CENTER'),
                         ('ALIGN', (2, 0), (2, -1), 'LEFT'),
-                        ('TEXTCOLOR', (2, 1), (2, -1), colors.HexColor(accent)),
-                        ('FONTNAME', (2, 1), (2, -1), 'Courier'),
-                        ('FONTSIZE', (2, 1), (2, -1), 7),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
                         ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
                         ('TOPPADDING', (0, 0), (-1, -1), 3),
                         ('LEFTPADDING', (0, 0), (-1, -1), 6),
                     ]
-                    for row_i in range(1, len(sv_data)):
-                        score_val = float(sv_data[row_i][1])
-                        if score_val >= 70:
-                            sc = '#16A34A'
-                        elif score_val >= 40:
-                            sc = '#D97706'
-                        else:
-                            sc = '#DC2626'
+                    for row_i, sc in enumerate(row_colors, start=1):
                         sv_style_cmds.append(('TEXTCOLOR', (1, row_i), (1, row_i), colors.HexColor(sc)))
                         sv_style_cmds.append(('FONTNAME', (1, row_i), (1, row_i), 'Helvetica-Bold'))
                     sv_table.setStyle(TableStyle(sv_style_cmds))
@@ -994,18 +1106,30 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
                                  textColor=colors.HexColor('#6B7280'), spaceAfter=8)
                 ))
                 
-                # Metrics table — 5 columns with color-coded values
+                # Metrics table — 5 columns with color-coded values.
+                # Status Band wrapped in a Paragraph so multi-word labels
+                # (e.g. "Stable but Vulnerable") wrap inside their cell.
+                lb_color = '#16A34A' if lb_val >= 0 else '#DC2626'
+                status_band_style = ParagraphStyle(
+                    'StatusBandPaid', parent=styles['Normal'],
+                    fontName='Helvetica-Bold', fontSize=10,
+                    textColor=colors.HexColor('#1F2937'),
+                    alignment=TA_CENTER, leading=12,
+                )
                 ad_metrics = [
                     ['Domain Score', 'BHP (Capacity)', 'PEI (Pressure)', 'Load Balance', 'Status Band'],
-                    [f'{domain_score:.0f}/100', f'{bhp_val:.1f}', f'{pei_val:.1f}',
-                     f'{lb_val:+.1f}', status_band],
+                    [
+                        f'{domain_score:.0f}/100', f'{bhp_val:.1f}', f'{pei_val:.1f}',
+                        f'{lb_val:+.1f}',
+                        Paragraph(status_band, status_band_style),
+                    ],
                 ]
-                ad_tbl = Table(ad_metrics, colWidths=[1.2*inch, 1.2*inch, 1.2*inch, 1.1*inch, 1.3*inch])
-                lb_color = '#16A34A' if lb_val >= 0 else '#DC2626'
+                ad_tbl = Table(ad_metrics, colWidths=[1.1*inch, 1.2*inch, 1.2*inch, 1.1*inch, 1.4*inch])
                 ad_tbl.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(accent)),
                     ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                     ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                     ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                     ('FONTSIZE', (0, 0), (-1, 0), 8),
                     ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
@@ -1021,32 +1145,51 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
                 elements.append(ad_tbl)
                 elements.append(Spacer(1, 0.06*inch))
                 
-                # Block 2: BHP vs PEI visual balance bar (GAP 5)
+                # Block 2: BHP vs PEI visual balance bar (GAP 5).
+                # Bars are vector Drawings sized in proportion to each side's
+                # share of the (BHP + PEI) total — replaces the old Unicode
+                # block-character bars which all rendered identically in
+                # Courier-Bold (those glyphs don't exist in the Type-1 font).
                 bhp_total = bhp_val + pei_val if (bhp_val + pei_val) > 0 else 1
-                bhp_pct = int(round((bhp_val / bhp_total) * 20))
-                pei_pct = 20 - bhp_pct
-                bhp_bar = '█' * bhp_pct
-                pei_bar = '█' * pei_pct
+                bhp_share_pct = round((bhp_val / bhp_total) * 100)
+                pei_share_pct = round((pei_val / bhp_total) * 100)
                 balance_label = 'BHP > PEI' if lb_val > 0 else ('PEI > BHP' if lb_val < 0 else 'BALANCED')
                 bal_data = [
-                    ['INTERNAL CAPACITY (BHP)', 'BALANCE', 'EXTERNAL PRESSURE (PEI)'],
-                    [f'{bhp_bar}  {bhp_val:.1f}', balance_label, f'{pei_val:.1f}  {pei_bar}'],
+                    ['INTERNAL CAPACITY (BHP)', '', 'BALANCE', '', 'EXTERNAL PRESSURE (PEI)'],
+                    [
+                        _make_progress_bar(bhp_share_pct, width_inch=1.7, fill_color='#2563EB'),
+                        f'{bhp_val:.1f}',
+                        balance_label,
+                        f'{pei_val:.1f}',
+                        _make_progress_bar(pei_share_pct, width_inch=1.7, fill_color='#DC2626'),
+                    ],
                 ]
-                bal_tbl = Table(bal_data, colWidths=[2.4*inch, 1.2*inch, 2.4*inch])
+                bal_tbl = Table(
+                    bal_data,
+                    colWidths=[1.8*inch, 0.45*inch, 1.5*inch, 0.45*inch, 1.8*inch],
+                )
                 bal_tbl.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#EFF6FF')),
-                    ('BACKGROUND', (1, 0), (1, 0), colors.HexColor('#F3F4F6')),
-                    ('BACKGROUND', (2, 0), (2, 0), colors.HexColor('#FEF2F2')),
-                    ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1E40AF')),
-                    ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#374151')),
-                    ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#991B1B')),
+                    ('SPAN', (0, 0), (1, 0)),
+                    ('SPAN', (3, 0), (4, 0)),
+                    ('BACKGROUND', (0, 0), (1, 0), colors.HexColor('#EFF6FF')),
+                    ('BACKGROUND', (2, 0), (2, 0), colors.HexColor('#F3F4F6')),
+                    ('BACKGROUND', (3, 0), (4, 0), colors.HexColor('#FEF2F2')),
+                    ('TEXTCOLOR', (0, 0), (1, 0), colors.HexColor('#1E40AF')),
+                    ('TEXTCOLOR', (2, 0), (2, 0), colors.HexColor('#374151')),
+                    ('TEXTCOLOR', (3, 0), (4, 0), colors.HexColor('#991B1B')),
                     ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                     ('FONTSIZE', (0, 0), (-1, 0), 7),
-                    ('FONTNAME', (0, 1), (-1, 1), 'Courier-Bold'),
-                    ('FONTSIZE', (0, 1), (-1, 1), 8),
+                    ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 1), (-1, 1), 9),
+                    ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor('#1E40AF')),
+                    ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor('#374151')),
+                    ('TEXTCOLOR', (3, 1), (3, 1), colors.HexColor('#991B1B')),
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                     ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-                    ('ALIGN', (1, 0), (1, -1), 'CENTER'),
-                    ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+                    ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+                    ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+                    ('ALIGN', (3, 0), (3, -1), 'RIGHT'),
+                    ('ALIGN', (4, 0), (4, -1), 'RIGHT'),
                     ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
                     ('TOPPADDING', (0, 0), (-1, -1), 4),
@@ -1144,11 +1287,28 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
                     # BHP subvariables
                     if bhp_svs:
                         sv_data = [['BHP Subvariable (Internal Capacity)', 'Score', 'Level']]
+                        bhp_pcts = []
                         for sv_name, sv_score in bhp_svs.items():
-                            bar_pct = min(100, max(0, sv_score if isinstance(sv_score, (int, float)) else 0))
-                            bar_char = '█' * int(bar_pct / 5) + '░' * (20 - int(bar_pct / 5))
-                            sv_data.append([sv_name, f'{bar_pct:.0f}', bar_char])
-                        
+                            try:
+                                bar_pct = float(sv_score)
+                            except (TypeError, ValueError):
+                                bar_pct = 0.0
+                            bar_pct = max(0.0, min(100.0, bar_pct))
+                            bhp_pcts.append(bar_pct)
+                            sv_data.append([sv_name, f'{bar_pct:.0f}', ''])
+
+                        # Inject proportional vector bars (per-row color =
+                        # green ≥70, amber ≥40, red <40 — BHP is internal
+                        # capacity so higher is better).
+                        bhp_row_colors = []
+                        for row_i in range(1, len(sv_data)):
+                            sval = float(sv_data[row_i][1])
+                            sc = '#16A34A' if sval >= 70 else '#D97706' if sval >= 40 else '#DC2626'
+                            bhp_row_colors.append(sc)
+                            sv_data[row_i][2] = _make_progress_bar(
+                                bhp_pcts[row_i - 1], width_inch=2.6, fill_color=sc,
+                            )
+
                         sv_table = Table(sv_data, colWidths=[2.4*inch, 0.6*inch, 3.0*inch])
                         sv_cmds = [
                             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#EFF6FF')),
@@ -1160,31 +1320,43 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
                             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
                             ('ALIGN', (1, 0), (1, -1), 'CENTER'),
                             ('ALIGN', (2, 0), (2, -1), 'LEFT'),
-                            ('TEXTCOLOR', (2, 1), (2, -1), colors.HexColor('#2563EB')),
-                            ('FONTNAME', (2, 1), (2, -1), 'Courier'),
-                            ('FONTSIZE', (2, 1), (2, -1), 7),
+                            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
                             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
                             ('TOPPADDING', (0, 0), (-1, -1), 3),
                             ('LEFTPADDING', (0, 0), (-1, -1), 6),
                         ]
-                        for row_i in range(1, len(sv_data)):
-                            sval = float(sv_data[row_i][1])
-                            sc = '#16A34A' if sval >= 70 else '#D97706' if sval >= 40 else '#DC2626'
+                        for row_i, sc in enumerate(bhp_row_colors, start=1):
                             sv_cmds.append(('TEXTCOLOR', (1, row_i), (1, row_i), colors.HexColor(sc)))
                             sv_cmds.append(('FONTNAME', (1, row_i), (1, row_i), 'Helvetica-Bold'))
                         sv_table.setStyle(TableStyle(sv_cmds))
                         elements.append(sv_table)
                         elements.append(Spacer(1, 0.05*inch))
-                    
+
                     # PEI subvariables
                     if pei_svs:
                         pei_data = [['PEI Subvariable (External Pressure)', 'Score', 'Level']]
+                        pei_pcts = []
                         for sv_name, sv_score in pei_svs.items():
-                            bar_pct = min(100, max(0, sv_score if isinstance(sv_score, (int, float)) else 0))
-                            bar_char = '█' * int(bar_pct / 5) + '░' * (20 - int(bar_pct / 5))
-                            pei_data.append([sv_name, f'{bar_pct:.0f}', bar_char])
-                        
+                            try:
+                                bar_pct = float(sv_score)
+                            except (TypeError, ValueError):
+                                bar_pct = 0.0
+                            bar_pct = max(0.0, min(100.0, bar_pct))
+                            pei_pcts.append(bar_pct)
+                            pei_data.append([sv_name, f'{bar_pct:.0f}', ''])
+
+                        # PEI = external pressure: higher score = more strain,
+                        # so the color scale inverts (red ≥70, amber ≥40, green <40).
+                        pei_row_colors = []
+                        for row_i in range(1, len(pei_data)):
+                            sval = float(pei_data[row_i][1])
+                            sc = '#DC2626' if sval >= 70 else '#D97706' if sval >= 40 else '#16A34A'
+                            pei_row_colors.append(sc)
+                            pei_data[row_i][2] = _make_progress_bar(
+                                pei_pcts[row_i - 1], width_inch=2.6, fill_color=sc,
+                            )
+
                         pei_table = Table(pei_data, colWidths=[2.4*inch, 0.6*inch, 3.0*inch])
                         pei_cmds = [
                             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#FEF2F2')),
@@ -1196,18 +1368,13 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
                             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
                             ('ALIGN', (1, 0), (1, -1), 'CENTER'),
                             ('ALIGN', (2, 0), (2, -1), 'LEFT'),
-                            ('TEXTCOLOR', (2, 1), (2, -1), colors.HexColor('#DC2626')),
-                            ('FONTNAME', (2, 1), (2, -1), 'Courier'),
-                            ('FONTSIZE', (2, 1), (2, -1), 7),
+                            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#FECACA')),
                             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
                             ('TOPPADDING', (0, 0), (-1, -1), 3),
                             ('LEFTPADDING', (0, 0), (-1, -1), 6),
                         ]
-                        for row_i in range(1, len(pei_data)):
-                            sval = float(pei_data[row_i][1])
-                            # For PEI, high = more pressure = bad
-                            sc = '#DC2626' if sval >= 70 else '#D97706' if sval >= 40 else '#16A34A'
+                        for row_i, sc in enumerate(pei_row_colors, start=1):
                             pei_cmds.append(('TEXTCOLOR', (1, row_i), (1, row_i), colors.HexColor(sc)))
                             pei_cmds.append(('FONTNAME', (1, row_i), (1, row_i), 'Helvetica-Bold'))
                         pei_table.setStyle(TableStyle(pei_cmds))

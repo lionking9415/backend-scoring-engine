@@ -8,6 +8,12 @@ LENS_RULES = {
         "label": "Student Success",
         "icon": "🎓",
         "primary_goal": "academic performance",
+        # Verbatim per Addendum-Phase 3 Agreement §3.7 (Lens Differentiation
+        # Pathways). The literal question is injected into the AI prompt so
+        # every section meaningfully answers it.
+        "guiding_question": (
+            "How does my executive functioning impact my learning and academic performance?"
+        ),
         "context_instruction": (
             "Interpret ALL results through the primary lens goal: ACADEMIC PERFORMANCE. "
             "Apply academic context throughout. Use examples related to: "
@@ -25,6 +31,9 @@ LENS_RULES = {
         "label": "Personal / Lifestyle",
         "icon": "🧍",
         "primary_goal": "lifestyle stability",
+        "guiding_question": (
+            "How does my executive functioning shape my daily life, habits, and identity?"
+        ),
         "context_instruction": (
             "Interpret ALL results through the primary lens goal: LIFESTYLE STABILITY. "
             "Apply lifestyle context throughout. Use examples related to: "
@@ -41,6 +50,10 @@ LENS_RULES = {
         "label": "Professional / Leadership",
         "icon": "💼",
         "primary_goal": "execution and productivity",
+        "guiding_question": (
+            "How does my executive functioning influence my execution, productivity, "
+            "and career growth?"
+        ),
         "context_instruction": (
             "Interpret ALL results through the primary lens goal: EXECUTION AND PRODUCTIVITY. "
             "Apply workplace context throughout. Use examples related to: "
@@ -58,6 +71,9 @@ LENS_RULES = {
         "label": "Family EF Ecosystem",
         "icon": "👨‍👩‍👧",
         "primary_goal": "relational and shared system dynamics",
+        "guiding_question": (
+            "How does my executive functioning affect my relationships and shared environments?"
+        ),
         "context_instruction": (
             "Interpret ALL results through the primary lens goal: RELATIONAL AND SHARED SYSTEM DYNAMICS. "
             "Apply relational/family context throughout. Use examples related to: "

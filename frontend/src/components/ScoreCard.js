@@ -1151,9 +1151,13 @@ const ScoreCard = ({
         <div className="bg-white rounded-2xl shadow-md p-6">
           {isPaid && (
             <>
-              <h2 className="text-xl font-bold text-gray-800 mb-2 text-center">Select Your Report Lens</h2>
-              <p className="text-gray-500 text-sm text-center mb-5">
+              <h2 className="text-xl font-bold text-gray-800 mb-2 text-center">Select Your Data Report Lens</h2>
+              <p className="text-gray-500 text-sm text-center mb-1">
                 Your assessment data can be interpreted through multiple lenses. Choose an unlocked lens to download, or unlock another.
+              </p>
+              <p className="text-gray-400 text-xs text-center mb-5 italic">
+                These are <span className="font-semibold text-indigo-600">structured data PDFs</span> — charts, scores, and AIMS targets.
+                Looking for the AI-written interpretation? Generate it from <span className="font-semibold">AI Reports</span> below.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                 {[
@@ -1226,12 +1230,12 @@ const ScoreCard = ({
           )}
 
           <div className="text-center">
-            <h3 className="text-lg font-bold text-gray-800 mb-3">
-              {isPaid ? '📄 Download Your Full Galaxy Report' : '📄 Download Your Free ScoreCard'}
+            <h3 className="text-lg font-bold text-gray-800 mb-1">
+              {isPaid ? '📊 Download Your Data Report (PDF)' : '📄 Download Your Free ScoreCard'}
             </h3>
             <p className="text-gray-600 text-sm mb-4">
               {isPaid
-                ? 'Save your complete executive function report as a PDF.'
+                ? 'Charts, subvariable bars, applied-domain tables, and AIMS targets — derived directly from the scoring engine.'
                 : 'Save your executive function profile as a PDF for your records.'}
             </p>
 
@@ -1250,7 +1254,7 @@ const ScoreCard = ({
               {downloadingPdf
                 ? '⏳ Generating PDF...'
                 : isPaid && selectedLens
-                ? `Download ${selectedLens.replace(/_/g, ' ').replace(/FULL GALAXY/, 'Full Galaxy')} Report`
+                ? `Download ${selectedLens.replace(/_/g, ' ').replace(/FULL GALAXY/, 'Full Galaxy')} Data Report`
                 : isPaid
                 ? 'Select a Lens to Download'
                 : 'Download Free ScoreCard PDF'}
@@ -1301,25 +1305,25 @@ const ScoreCard = ({
                 onClick={onViewAIReports}
                 className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg"
               >
-                <span className="text-2xl">📄</span>
+                <span className="text-2xl">✍️</span>
                 <div className="text-left">
-                  <span className="font-bold text-sm block">AI Reports</span>
+                  <span className="font-bold text-sm block">AI Narrative Reports</span>
                   <span className="text-xs text-indigo-200">
                     {unlockedLenses.length === 1
-                      ? '1 lens unlocked'
-                      : `${unlockedLenses.length} lenses unlocked`}
+                      ? '15-section AI interpretation · 1 lens'
+                      : `15-section AI interpretation · ${unlockedLenses.length} lenses`}
                   </span>
                 </div>
               </button>
             ) : (
               <div
                 className="flex items-center gap-3 p-4 rounded-xl bg-gray-100 border-2 border-dashed border-gray-300 text-gray-500 cursor-not-allowed"
-                title="Unlock at least one lens to view AI reports"
+                title="Unlock at least one lens to view AI narrative reports"
               >
                 <span className="text-2xl">🔒</span>
                 <div className="text-left">
-                  <span className="font-bold text-sm block">AI Reports</span>
-                  <span className="text-xs">Locked — unlock any lens to begin</span>
+                  <span className="font-bold text-sm block">AI Narrative Reports</span>
+                  <span className="text-xs">15-section AI interpretation — unlock any lens to begin</span>
                 </div>
               </div>
             )

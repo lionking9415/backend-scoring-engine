@@ -274,15 +274,19 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-indigo-900">AI Executive Function Reports</h1>
+          <h1 className="text-2xl font-bold text-indigo-900">AI Narrative Reports</h1>
           <p className="text-sm text-gray-500 mt-1">
-            AI-generated insights powered by your assessment data
+            15-section AI-written interpretations of your assessment — one per lens.
+          </p>
+          <p className="text-xs text-gray-400 mt-1 italic">
+            Looking for charts, scores, and bars? Download the{' '}
+            <span className="font-semibold text-indigo-600">Data Report PDF</span> from your ScoreCard instead.
           </p>
         </div>
         {onBack && (
           <button
             onClick={onBack}
-            className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold"
+            className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold whitespace-nowrap ml-4"
           >
             ← Back to Dashboard
           </button>
@@ -407,9 +411,13 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
             <div className="flex items-center gap-3">
               <span className="text-3xl">{lensInfo.icon}</span>
               <div>
-                <h2 className="text-xl font-bold">{lensInfo.label} Report</h2>
+                <h2 className="text-xl font-bold">
+                  {lensInfo.label} {activeReport === 'FULL_GALAXY' ? '— Cosmic Narrative' : '— AI Narrative'}
+                </h2>
                 <p className="text-sm opacity-80">
-                  BEST Galaxy Executive Function Analysis
+                  {activeReport === 'FULL_GALAXY'
+                    ? '11-section AI synthesis across all 4 lenses'
+                    : '15-section AI-written interpretation of your scoring data'}
                 </p>
               </div>
             </div>
@@ -456,7 +464,11 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
                 className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span>{downloadingPdf ? '⏳' : '📥'}</span>
-                {downloadingPdf ? 'Generating PDF...' : 'Download PDF'}
+                {downloadingPdf
+                  ? 'Generating PDF...'
+                  : activeReport === 'FULL_GALAXY'
+                    ? 'Download Cosmic Narrative PDF'
+                    : 'Download AI Narrative PDF'}
               </button>
             </div>
           )}
@@ -479,8 +491,8 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
         (paidProducts || []).length === 0 ? (
           <UnlockGate
             product="PERSONAL_LIFESTYLE"
-            title="AI Reports are a premium feature"
-            description="Unlock any lens to generate your personalized 15-section AI Executive Function report."
+            title="AI Narrative Reports are a premium feature"
+            description="Unlock any lens to generate your personalized 15-section AI-written interpretation of your assessment."
             assessmentId={assessmentId}
             userEmail={userEmail}
             ctaLabel="Unlock Personal / Lifestyle Lens →"
@@ -496,17 +508,17 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
           </UnlockGate>
         ) : (
           <div className="text-center py-16">
-            <span className="text-5xl mb-4 block">📊</span>
-            <h3 className="text-xl font-bold text-gray-800 mb-2">No Reports Yet</h3>
+            <span className="text-5xl mb-4 block">✍️</span>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">No AI Narratives Yet</h3>
             <p className="text-gray-500 text-sm mb-6">
-              Select a lens above to generate your first AI-powered report.
+              Select a lens above to generate your first 15-section AI-written interpretation.
             </p>
             <button
               onClick={() => generateReport((paidProducts || [])[0] || 'PERSONAL_LIFESTYLE')}
               disabled={generating}
               className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all"
             >
-              Generate {LENS_LABELS[(paidProducts || [])[0]]?.label || 'Personal / Lifestyle'} Report
+              Generate {LENS_LABELS[(paidProducts || [])[0]]?.label || 'Personal / Lifestyle'} AI Narrative
             </button>
           </div>
         )

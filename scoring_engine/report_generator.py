@@ -265,16 +265,36 @@ def _build_section_instructions(sections: list[dict], report_type: str) -> str:
 
     lens = get_lens_context(report_type)
     primary_goal = lens.get('primary_goal', '')
+    # Verbatim per Addendum-Phase 3 Agreement §3.7. Every report must
+    # meaningfully answer this exact question; the literal text is
+    # injected so the AI cannot drift from the spec wording.
+    guiding_question = lens.get('guiding_question', '')
+
     lines = [
         f"## REPORT TYPE: {lens['label']} ({lens['icon']})",
         f"## PRIMARY LENS GOAL: {primary_goal.upper()}",
         f"Interpret ALL results through the primary lens goal: {primary_goal}.",
+    ]
+
+    if guiding_question:
+        lines.extend([
+            "\n## GUIDING QUESTION (Addendum Phase 3, §3.7)",
+            f'"{guiding_question}"',
+            (
+                "Every section in this report MUST contribute to answering this "
+                "exact question. Treat it as the report's foundational interpretation "
+                "frame: outputs that don't connect back to it are off-lens and "
+                "violate the lens differentiation contract."
+            ),
+        ])
+
+    lines.extend([
         f"\n## LENS CONTEXT RULES\n{lens['context_instruction']}",
         "\n## REQUIRED SECTIONS (generate in this exact order)\n",
         "Output each section as a JSON object with keys matching the section key.",
         "Each value should be the full narrative text for that section.",
         "Do NOT include markdown headers in the text — just the narrative content.\n",
-    ]
+    ])
 
     for s in sections:
         lines.append(f"### Section {s['number']}: {s['title']} (key: \"{s['key']}\")")
@@ -325,10 +345,26 @@ Generate all {len(lens_sections)} sections now. Be thorough — each section sho
 
 def _build_cosmic_lens_emphasis(report_type_to_weights: dict) -> str:
     """Build a textual summary of how each lens emphasizes core domains."""
+    from scoring_engine.prompts.lens_rules import LENS_RULES
+
     lines = ["## LENS EMPHASIS PROFILE (interpretation weights per lens)"]
     for lens, weights in report_type_to_weights.items():
         emphasis = ", ".join(f"{k}={v:.2f}" for k, v in weights.items())
         lines.append(f"- {lens}: {emphasis}")
+
+    # Surface each lens's verbatim §3.7 guiding question so the cosmic
+    # synthesis stays anchored to the four real-world frames it must
+    # weave together (Addendum Phase 3 §3.7 + §7).
+    questions = [
+        (lens, LENS_RULES.get(lens, {}).get("guiding_question"))
+        for lens in report_type_to_weights
+    ]
+    if any(q for _, q in questions):
+        lines.append("")
+        lines.append("## LENS GUIDING QUESTIONS (each must remain answerable in the synthesis)")
+        for lens, q in questions:
+            if q:
+                lines.append(f'- {lens}: "{q}"')
     return "\n".join(lines)
 
 
