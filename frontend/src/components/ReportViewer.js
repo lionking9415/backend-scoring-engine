@@ -1,6 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import UnlockGate from './UnlockGate';
+
+// The four lens reports that must exist before Cosmic Integration synthesis
+// is allowed. Mirrors `check_cosmic_eligibility` in scoring_engine/report_generator.py.
+const REQUIRED_COSMIC_LENSES = [
+  'STUDENT_SUCCESS',
+  'PERSONAL_LIFESTYLE',
+  'PROFESSIONAL_LEADERSHIP',
+  'FAMILY_ECOSYSTEM',
+];
 
 const SECTION_META = {
   galaxy_snapshot: { icon: '🌠', title: 'Galaxy Snapshot', color: '#6366F1' },
@@ -112,11 +121,27 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
   const [activeReport, setActiveReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [cosmicEligible, setCosmicEligible] = useState(false);
-  const [cosmicMissing, setCosmicMissing] = useState([]);
   const [cosmicPaymentEligible, setCosmicPaymentEligible] = useState(false);
   const [error, setError] = useState(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  // Derive cosmic eligibility client-side from the reports we currently
+  // hold. This makes the "Generate Cosmic Integration" button enable
+  // *immediately* after the 4th lens is generated — without waiting for
+  // a manual refresh or an extra API roundtrip. The backend re-validates
+  // on POST /api/v1/cosmic/generate so we're not skipping any guardrail.
+  const { cosmicEligible, cosmicMissing } = useMemo(() => {
+    const have = new Set(
+      Object.keys(reports || {}).filter(
+        (k) => reports[k] && Object.keys(reports[k]).length > 0,
+      ),
+    );
+    const missing = REQUIRED_COSMIC_LENSES.filter((l) => !have.has(l));
+    return {
+      cosmicEligible: missing.length === 0,
+      cosmicMissing: missing,
+    };
+  }, [reports]);
 
   const lensIsPaid = (lens) => {
     if (!paidProducts) return false;
@@ -124,6 +149,29 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
     return paidProducts.includes(lens);
   };
   const cosmicIsPaid = (paidProducts || []).includes('COSMIC_BUNDLE');
+
+  // Refreshes the cosmic eligibility data we *can't* derive on the client
+  // (server-side payment eligibility, paid_products SKUs). Called on mount
+  // and again after each lens generation so the UI stays in sync with the
+  // backend's authoritative view.
+  const refreshCosmicEligibility = useCallback(async () => {
+    if (!assessmentId || !userEmail) return null;
+    try {
+      const res = await axios.get(
+        `/api/v1/cosmic/eligibility/${userEmail}/${assessmentId}`,
+      );
+      if (res.data?.success) {
+        setCosmicPaymentEligible(!!res.data.payment_eligible);
+        if (Array.isArray(res.data.paid_products)) {
+          setPaidProducts(res.data.paid_products);
+        }
+        return res.data;
+      }
+    } catch (err) {
+      console.warn('Cosmic eligibility refresh failed:', err);
+    }
+    return null;
+  }, [assessmentId, userEmail]);
 
   useEffect(() => {
     loadReports();
@@ -156,12 +204,12 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
       }
 
       // Step 2 — cosmic eligibility (also refreshes paid_products).
+      // Note: `cosmicEligible` / `cosmicMissing` are derived from `reports`
+      // via useMemo — we don't need to set them from the API response.
       let cosmicPaid = mergedPaidProducts.includes('COSMIC_BUNDLE');
       try {
         const cosmicRes = await axios.get(`/api/v1/cosmic/eligibility/${userEmail}/${assessmentId}`);
         if (cosmicRes.data.success) {
-          setCosmicEligible(cosmicRes.data.eligible);
-          setCosmicMissing(cosmicRes.data.missing_lenses || []);
           setCosmicPaymentEligible(!!cosmicRes.data.payment_eligible);
           if (cosmicRes.data.paid_products) {
             mergedPaidProducts = cosmicRes.data.paid_products;
@@ -254,6 +302,11 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
           setReportIds(prev => ({ ...prev, [reportType]: res.data.report.report_id }));
         }
         setActiveReport(reportType);
+        // Re-sync server-side payment/eligibility state. The cosmic
+        // *eligibility* flag itself is derived from `reports` via useMemo,
+        // so the Cosmic Integration button enables the moment the 4th
+        // lens is added — no refresh required.
+        refreshCosmicEligibility();
       }
     } catch (err) {
       setError(err.response?.data?.detail?.message || err.response?.data?.detail || 'Report generation failed');
@@ -299,7 +352,9 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
           setReportIds(prev => ({ ...prev, FULL_GALAXY: res.data.report.report_id }));
         }
         setActiveReport('FULL_GALAXY');
-        setCosmicEligible(true);
+        // No need to set `cosmicEligible` — it's derived from `reports`
+        // via useMemo. Refresh server-side payment state to stay accurate.
+        refreshCosmicEligibility();
       }
     } catch (err) {
       setError(err.response?.data?.detail?.message || err.response?.data?.detail || 'Cosmic report generation failed');
