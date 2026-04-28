@@ -1384,7 +1384,11 @@ def create_app(use_database: bool = False) -> FastAPI:
         if not pdf_bytes:
             raise HTTPException(status_code=500, detail="Failed to generate cosmic dashboard PDF")
 
-        filename = f"BEST_Cosmic_Dashboard_{user_id[:8]}_{assessment_id[:8]}.pdf"
+        # Date-stamped filename without IDs — matches the rest of the
+        # download set (DataReport / AINarrative / ScoreCard / Cosmic
+        # Narrative) and gives the user a clean, shareable filename.
+        from datetime import date as _date
+        filename = f"BEST_Cosmic_Dashboard_{_date.today().isoformat()}.pdf"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",

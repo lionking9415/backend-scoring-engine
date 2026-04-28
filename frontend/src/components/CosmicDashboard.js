@@ -116,7 +116,11 @@ const CosmicDashboard = ({
       const dlUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = dlUrl;
-      link.download = `BEST_Cosmic_Dashboard_${String(resolvedAssessmentId).slice(0, 8)}.pdf`;
+      // No assessment/user IDs in the filename — clean, shareable name
+      // that mirrors the other download types (DataReport / AINarrative /
+      // ScoreCard / Cosmic Narrative).
+      const today = new Date().toISOString().split('T')[0];
+      link.download = `BEST_Cosmic_Dashboard_${today}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
