@@ -6,12 +6,6 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
-  const [demographics, setDemographics] = useState({
-    age_range: '',
-    gender: '',
-    education: '',
-    referral_source: '',
-  });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -40,15 +34,13 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
       return;
     }
 
-    // Demographics are optional at signup — full intake happens before assessment
+    // Full demographic intake runs in DemographicForm immediately after signup.
 
     try {
-      // Call backend signup API
       const response = await axios.post('/api/v1/auth/signup', {
         email,
         password,
         name: name || email.split('@')[0],
-        demographics
       });
 
       if (response.data.success) {
@@ -139,81 +131,6 @@ const Signup = ({ onSignup, onSwitchToLogin }) => {
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               required
             />
-          </div>
-
-          <div className="pt-4 border-t border-gray-200">
-            <p className="text-sm font-semibold text-gray-700 mb-3">
-              Quick Background Info <span className="text-gray-400 font-normal">(Optional — full intake before assessment)</span>
-            </p>
-            
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Age Range</label>
-                <select
-                  value={demographics.age_range}
-                  onChange={(e) => setDemographics({...demographics, age_range: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="">Select...</option>
-                  <option value="Under 18">Under 18</option>
-                  <option value="18–24">18–24</option>
-                  <option value="25–34">25–34</option>
-                  <option value="35–44">35–44</option>
-                  <option value="45–54">45–54</option>
-                  <option value="55–64">55–64</option>
-                  <option value="65+">65+</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Gender</label>
-                <select
-                  value={demographics.gender}
-                  onChange={(e) => setDemographics({...demographics, gender: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="">Select...</option>
-                  <option value="Female">Female</option>
-                  <option value="Male">Male</option>
-                  <option value="Non-binary">Non-binary</option>
-                  <option value="Prefer not to say">Prefer not to say</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Education Level</label>
-                <select
-                  value={demographics.education}
-                  onChange={(e) => setDemographics({...demographics, education: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="">Select...</option>
-                  <option value="High School">High School</option>
-                  <option value="Some College">Some College</option>
-                  <option value="Bachelor's Degree">Bachelor's Degree</option>
-                  <option value="Master's Degree">Master's Degree</option>
-                  <option value="Doctorate">Doctorate</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">How did you hear about us?</label>
-                <select
-                  value={demographics.referral_source}
-                  onChange={(e) => setDemographics({...demographics, referral_source: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="">Select...</option>
-                  <option value="Social Media">Social Media</option>
-                  <option value="Friend / Family">Friend / Family</option>
-                  <option value="School / University">School / University</option>
-                  <option value="Employer">Employer</option>
-                  <option value="Web Search">Web Search</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-            </div>
           </div>
 
           {error && (
