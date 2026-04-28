@@ -448,7 +448,13 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
                     const url = window.URL.createObjectURL(blob);
                     const link = document.createElement('a');
                     link.href = url;
-                    link.download = `BEST_Galaxy_${activeReport}_${new Date().toISOString().split('T')[0]}.pdf`;
+                    // Distinct kind-prefix so this AI Narrative PDF doesn't
+                    // overwrite the same-lens Data Report PDF in the
+                    // user's Downloads folder.
+                    const today = new Date().toISOString().split('T')[0];
+                    link.download = activeReport === 'FULL_GALAXY'
+                      ? `BEST_Cosmic_Narrative_${today}.pdf`
+                      : `BEST_Galaxy_AINarrative_${activeReport}_${today}.pdf`;
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);

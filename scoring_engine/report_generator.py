@@ -18,9 +18,73 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# SECTION VALUE NORMALIZATION
+# =============================================================================
+# The AI is asked to return each section as a flat string, but in practice
+# it sometimes nests an object (e.g. {"summary": "...", "details": "..."})
+# or returns a list of bullet items. Downstream consumers — the compliance
+# validator, the PDF generator, and the frontend — all assume strings, so
+# we flatten once here before they touch the data. This is the source of
+# the historical "'dict' object has no attribute 'strip'" crash.
+# =============================================================================
+
+
+def _stringify_section_value(value: Any) -> str:
+    """Flatten any AI-returned section value into a readable narrative string.
+
+    Handles strings (passthrough), scalars (str()), dicts (rendered as
+    labeled paragraphs preserving sub-structure), and lists (rendered as
+    bullets when items are short, paragraphs otherwise). Returns "" for
+    None / empty containers so the validator's empty-section check still
+    triggers correctly.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, dict):
+        parts: list[str] = []
+        for k, v in value.items():
+            sub = _stringify_section_value(v)
+            if not sub:
+                continue
+            label = str(k).replace("_", " ").strip()
+            label = label[:1].upper() + label[1:] if label else ""
+            parts.append(f"**{label}**: {sub}" if label else sub)
+        return "\n\n".join(parts)
+    if isinstance(value, list):
+        items = [_stringify_section_value(v) for v in value]
+        items = [i for i in items if i]
+        if not items:
+            return ""
+        # Render as a bulleted list when each item is a short single-line
+        # string (typical for "key takeaways" style sections); otherwise
+        # join as paragraphs.
+        if all(len(i) < 200 and "\n" not in i for i in items):
+            return "\n".join(f"- {i}" for i in items)
+        return "\n\n".join(items)
+    return str(value)
+
+
+def _normalize_sections(sections: Any) -> dict:
+    """Coerce the AI's raw output into a {section_key: str} mapping.
+
+    Non-dict top-level returns are turned into an empty dict so the
+    fallback-template path can take over instead of crashing the validator.
+    """
+    if not isinstance(sections, dict):
+        return {}
+    return {str(k): _stringify_section_value(v) for k, v in sections.items()}
 
 
 # =============================================================================
@@ -491,6 +555,11 @@ def generate_report(
         logger.warning(f"AI generation failed for {report_type}, using template fallback")
         sections = _generate_template_report(assessment_data, report_type, demographics)
 
+    # Coerce any nested-object / list section values into flat strings.
+    # The AI sometimes returns {"key": {"summary": ..., "details": ...}}
+    # which the downstream validator + PDF code can't handle.
+    sections = _normalize_sections(sections)
+
     # Validate
     validation = validate_report(sections, expected_keys, report_type)
 
@@ -540,6 +609,11 @@ def generate_cosmic_report(
     if not sections:
         logger.warning("AI generation failed for Cosmic report, using template fallback")
         sections = _generate_cosmic_template(assessment_data, lens_reports, demographics)
+
+    # Coerce any nested-object / list section values into flat strings before
+    # validation. (Cosmic prompts are the largest and most likely to elicit a
+    # non-flat shape from gpt-4o, which previously crashed the validator.)
+    sections = _normalize_sections(sections)
 
     validation = validate_report(sections, COSMIC_SECTION_KEYS, "FULL_GALAXY")
 

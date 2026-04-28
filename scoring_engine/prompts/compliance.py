@@ -7,6 +7,25 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def _as_text(value) -> str:
+    """Defensive coercion to a string.
+
+    Section values are *supposed* to be strings (the report generator runs
+    `_normalize_sections` first). This guard exists so that an unexpected
+    dict / list / None never crashes validation — which previously surfaced
+    as 'dict' object has no attribute 'strip'.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        import json as _json
+        return _json.dumps(value, ensure_ascii=False)
+    except Exception:
+        return str(value)
+
 # =============================================================================
 # BANNED LANGUAGE
 # =============================================================================
@@ -101,8 +120,10 @@ def validate_section_presence(report_sections: dict, required_keys: list[str]) -
     for key in required_keys:
         if key not in report_sections:
             missing.append(key)
-        elif not report_sections[key] or not report_sections[key].strip():
-            empty.append(key)
+        else:
+            text = _as_text(report_sections[key])
+            if not text or not text.strip():
+                empty.append(key)
 
     return {
         "all_sections_present": len(missing) == 0,
@@ -145,7 +166,7 @@ def validate_required_concepts(report_sections: dict) -> dict:
     """
     missing_concepts: dict[str, list[str]] = {}
     for section_key, required in REQUIRED_CONCEPTS.items():
-        text = report_sections.get(section_key)
+        text = _as_text(report_sections.get(section_key))
         if not text:
             continue
         text_lower = text.lower()
@@ -176,7 +197,7 @@ def validate_lens_exclusive(
         return {"lens_exclusive_present": True, "expected_key": None}
 
     key = spec["key"]
-    text = report_sections.get(key, "") or ""
+    text = _as_text(report_sections.get(key))
     return {
         "lens_exclusive_present": bool(text.strip()),
         "expected_key": key,
@@ -192,16 +213,22 @@ def validate_report(report_sections: dict, required_keys: list[str], report_type
     section_check = validate_section_presence(report_sections, required_keys)
 
     # Language compliance
-    all_text = " ".join(str(v) for v in report_sections.values() if v)
+    all_text = " ".join(_as_text(v) for v in report_sections.values() if v)
     language_violations = check_banned_language(all_text)
 
     # AIMS order
-    aims_text = report_sections.get("aims_plan", "") or report_sections.get("cosmic_aims", "")
+    aims_text = _as_text(report_sections.get("aims_plan")) or _as_text(report_sections.get("cosmic_aims"))
     aims_correct = validate_aims_order(aims_text)
 
     # Financial and health presence (single-lens only)
-    fin_present = bool(report_sections.get("financial_ef_profile", "").strip()) if "financial_ef_profile" in required_keys else True
-    health_present = bool(report_sections.get("health_ef_profile", "").strip()) if "health_ef_profile" in required_keys else True
+    fin_present = (
+        bool(_as_text(report_sections.get("financial_ef_profile")).strip())
+        if "financial_ef_profile" in required_keys else True
+    )
+    health_present = (
+        bool(_as_text(report_sections.get("health_ef_profile")).strip())
+        if "health_ef_profile" in required_keys else True
+    )
 
     # Required concepts (galaxy_snapshot mentions load+capacity, etc.)
     concept_check = validate_required_concepts(report_sections)

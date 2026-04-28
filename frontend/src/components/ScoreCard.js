@@ -222,16 +222,21 @@ const ScoreCard = ({
       const link = document.createElement('a');
       link.href = url;
       
-      // Include lens name in filename for paid reports
+      // Filename scheme — keep the report KIND distinct so a Data Report
+      // and an AI Narrative for the same lens don't overwrite each other:
+      //   Free ScoreCard       → BEST_Galaxy_ScoreCard_<date>.pdf
+      //   Paid Data Report     → BEST_Galaxy_DataReport_<LENS>_<date>.pdf
+      //   AI Narrative (lens)  → BEST_Galaxy_AINarrative_<LENS>_<date>.pdf  (ReportViewer.js)
+      const today = new Date().toISOString().split('T')[0];
       let filename;
       if (isPaid && selectedLens) {
-        const lensName = selectedLens.replace(/_/g, '_');
-        filename = `BEST_Galaxy_${lensName}_${new Date().toISOString().split('T')[0]}.pdf`;
+        filename = `BEST_Galaxy_DataReport_${selectedLens}_${today}.pdf`;
+      } else if (isPaid) {
+        filename = `BEST_Galaxy_DataReport_${today}.pdf`;
       } else {
-        const prefix = isPaid ? 'BEST_Galaxy_FullReport' : 'BEST_Galaxy_ScoreCard';
-        filename = `${prefix}_${new Date().toISOString().split('T')[0]}.pdf`;
+        filename = `BEST_Galaxy_ScoreCard_${today}.pdf`;
       }
-      
+
       link.download = filename;
       document.body.appendChild(link);
       link.click();

@@ -711,9 +711,13 @@ def create_app(use_database: bool = False) -> FastAPI:
         if not pdf_bytes:
             raise HTTPException(status_code=500, detail="Failed to generate PDF - no bytes returned")
         
-        # Include lens name in filename if specified
-        lens_suffix = f"_{lens}" if lens else ""
-        filename = f"BEST_Galaxy_Report{lens_suffix}_{result_id[:8]}.pdf"
+        # Distinct prefix `DataReport` so users can tell this apart from the
+        # AI Narrative Report (which uses `AINarrative` prefix). Both share
+        # the lens name, so without the prefix they collide in the
+        # Downloads folder.
+        lens_label = (lens or report_type or "").upper()
+        lens_suffix = f"_{lens_label}" if lens_label else ""
+        filename = f"BEST_Galaxy_DataReport{lens_suffix}_{result_id[:8]}.pdf"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -767,8 +771,15 @@ def create_app(use_database: bool = False) -> FastAPI:
         if not pdf_bytes:
             raise HTTPException(status_code=500, detail="Failed to generate AI report PDF")
 
-        lens_slug = report_type.lower()
-        filename = f"BEST_Galaxy_{lens_slug}_{report_id[:8]}.pdf"
+        # Distinct prefix so AI narrative PDFs are clearly separable from
+        # the Data Report PDFs (which use `DataReport` prefix). The cosmic
+        # narrative gets its own short prefix to differentiate it from
+        # the Cosmic Dashboard PDF.
+        if report_type == "FULL_GALAXY":
+            filename = f"BEST_Cosmic_Narrative_{report_id[:8]}.pdf"
+        else:
+            lens_label = report_type.upper()
+            filename = f"BEST_Galaxy_AINarrative_{lens_label}_{report_id[:8]}.pdf"
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
