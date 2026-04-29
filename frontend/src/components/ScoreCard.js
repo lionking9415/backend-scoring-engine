@@ -115,7 +115,6 @@ const ScoreCard = ({
   onViewCosmic,
   onViewAIReports,
 }) => {
-  const [upgradingFromLens, setUpgradingFromLens] = React.useState(false);
   const [unlockingLens, setUnlockingLens] = React.useState(null); // SKU currently being unlocked
   const [downloadingPdf, setDownloadingPdf] = React.useState(false);
   const [pdfError, setPdfError] = React.useState(null);
@@ -137,16 +136,52 @@ const ScoreCard = ({
     return cosmicUnlocked || (paidProducts || []).includes(lensKey);
   }, [cosmicUnlocked, paidProducts]);
 
-  const isPaid = hasAnyUnlock ? true : isPaidData(data);
+  // ──────────────────────────────────────────────────────────────────
+  // Access-level flags
+  //
+  //   hasPaidData   — the backend returned the full assessment payload
+  //                   (raw shape). Triggered by any non-empty unlock.
+  //                   Drives data normalization only.
+  //
+  //   isPaid        — user has paid for *something*. Drives the premium
+  //                   ScoreCard *view* (applied-domain details, AIMS
+  //                   plan, cosmic summary, domain-by-domain scoring).
+  //                   These are cross-cutting outputs of the same raw
+  //                   assessment data, so any paid tier unlocks them —
+  //                   the lens differentiation lives in the lens-
+  //                   specific Data Report PDF and AI Narrative.
+  //
+  //   hasAnyUnlock  — alias for the same idea, kept for clarity at the
+  //                   call sites that gate the per-lens download UI.
+  //
+  //   isLensUnlocked(key)
+  //                 — per-lens gate for the lens picker tiles + the
+  //                   AI Narrative generate buttons in ReportViewer.
+  //                   Only the lens you actually paid for is selectable.
+  //
+  //   cosmicUnlocked
+  //                 — gate for Cosmic Dashboard + Cosmic Integrative
+  //                   Report. Only COSMIC_BUNDLE buyers see those.
+  //
+  //   isFullAccess  — kept around for sections that should *only* show
+  //                   to true all-access users (none today, but the
+  //                   flag is here for future cosmic-only widgets).
+  // ──────────────────────────────────────────────────────────────────
+  const hasPaidData = hasAnyUnlock || isPaidData(data);
+  const isFullAccess =
+    cosmicUnlocked || unlockedLenses.length >= LENS_PRODUCTS.length;
+  const isPaid = hasAnyUnlock;
 
   // Auto-select the first unlocked lens once we know what's paid.
+  // Runs for any unlock (including a single-lens purchase) so the
+  // user lands on the lens they just bought.
   React.useEffect(() => {
-    if (isPaid && !selectedLens) {
+    if (hasAnyUnlock && !selectedLens) {
       const firstUnlocked = ['PERSONAL_LIFESTYLE', 'STUDENT_SUCCESS', 'PROFESSIONAL_LEADERSHIP', 'FAMILY_ECOSYSTEM', 'FULL_GALAXY']
         .find(isLensUnlocked);
       if (firstUnlocked) setSelectedLens(firstUnlocked);
     }
-  }, [isPaid, selectedLens, isLensUnlocked]);
+  }, [hasAnyUnlock, selectedLens, isLensUnlocked]);
 
   if (!data) {
     return (
@@ -156,7 +191,7 @@ const ScoreCard = ({
     );
   }
 
-  const normalized = isPaid ? normalizePaidData(data) : data;
+  const normalized = hasPaidData ? normalizePaidData(data) : data;
 
   const {
     galaxy_snapshot,
@@ -185,12 +220,13 @@ const ScoreCard = ({
       setPdfError('No assessment ID available');
       return;
     }
-    // For paid reports, require lens selection AND ensure that lens is unlocked
-    if (isPaid && !selectedLens) {
+    // For Data Reports (any unlock at all), require an unlocked lens
+    // selection so we hit the correct per-lens PDF endpoint.
+    if (hasAnyUnlock && !selectedLens) {
       setPdfError('Please select a report lens before downloading');
       return;
     }
-    if (isPaid && selectedLens && !isLensUnlocked(selectedLens)) {
+    if (hasAnyUnlock && selectedLens && !isLensUnlocked(selectedLens)) {
       setPdfError(`The ${selectedLens.replace(/_/g, ' ')} lens is locked. Please unlock it first.`);
       return;
     }
@@ -199,10 +235,12 @@ const ScoreCard = ({
 
     try {
       const axios = (await import('axios')).default;
-      
-      // Build endpoint with lens parameter for paid reports
+
+      // Endpoint pick:
+      //   any unlock → full Data Report PDF for the selected lens
+      //   no unlock  → free ScoreCard PDF
       let endpoint;
-      if (isPaid) {
+      if (hasAnyUnlock) {
         endpoint = `/api/v1/export/pdf/${assessmentId}`;
         if (selectedLens) {
           endpoint += `?lens=${selectedLens}`;
@@ -229,9 +267,9 @@ const ScoreCard = ({
       //   AI Narrative (lens)  → BEST_Galaxy_AINarrative_<LENS>_<date>.pdf  (ReportViewer.js)
       const today = new Date().toISOString().split('T')[0];
       let filename;
-      if (isPaid && selectedLens) {
+      if (hasAnyUnlock && selectedLens) {
         filename = `BEST_Galaxy_DataReport_${selectedLens}_${today}.pdf`;
-      } else if (isPaid) {
+      } else if (hasAnyUnlock) {
         filename = `BEST_Galaxy_DataReport_${today}.pdf`;
       } else {
         filename = `BEST_Galaxy_ScoreCard_${today}.pdf`;
@@ -295,41 +333,11 @@ const ScoreCard = ({
     }
   };
 
-  const handleLensUpgrade = async () => {
-    if (!assessmentId) {
-      alert('No assessment ID available');
-      return;
-    }
-    if (!userEmail) {
-      alert('Please log in to unlock the full report');
-      return;
-    }
-    setUpgradingFromLens(true);
-
-    try {
-      const axios = (await import('axios')).default;
-      const response = await axios.post('/api/v1/payment/create-checkout', null, {
-        params: {
-          assessment_id: assessmentId,
-          customer_email: userEmail,
-          success_url: `${window.location.origin}/success?assessment_id=${assessmentId}`,
-          cancel_url: window.location.href
-        }
-      });
-
-      if (response.data.success && response.data.session) {
-        if (response.data.session.checkout_url) {
-          window.location.href = response.data.session.checkout_url;
-        } else if (response.data.session.error) {
-          alert(response.data.session.error);
-          setUpgradingFromLens(false);
-        }
-      }
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to create checkout session');
-      setUpgradingFromLens(false);
-    }
-  };
+  // Note: a previous `handleLensUpgrade` helper sent every "Unlock Full
+  // Report" click to the backend without a `product` param, which fell
+  // back to COSMIC_BUNDLE ($99.99). With per-product Stripe pricing
+  // (lenses $30, cosmic $99.99) every unlock button now goes through
+  // `handleUnlockLens(...)` so the correct SKU is charged.
 
   const loadLabel = getLoadLabel(load_balance);
 
@@ -782,11 +790,13 @@ const ScoreCard = ({
                     {!isPaid && (
                       <div className="mt-3 pt-2 border-t border-gray-200">
                         <button
-                          onClick={handleLensUpgrade}
-                          disabled={upgradingFromLens}
+                          onClick={() => handleUnlockLens('FULL_GALAXY')}
+                          disabled={unlockingLens === 'COSMIC_BUNDLE'}
                           className="w-full text-center text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors disabled:opacity-50"
                         >
-                          {upgradingFromLens ? '⏳ Processing...' : '🔍 View Details — Unlock Full Report →'}
+                          {unlockingLens === 'COSMIC_BUNDLE'
+                            ? '⏳ Opening checkout…'
+                            : '🔍 View Details — Unlock Cosmic Bundle →'}
                         </button>
                       </div>
                     )}
@@ -1114,37 +1124,54 @@ const ScoreCard = ({
           </div>
         )}
 
-        {/* ── 5. FOUR LENS TEASER SECTION (Free only) ── */}
-        {!isPaid && lens_teasers && (
+        {/* ── 5. FOUR LENS TEASER SECTION (Free only) ──
+            Hidden once the user has any unlock — at that point the
+            Lens Picker below is the canonical place to see what's
+            unlocked vs locked, and shows the same upsell buttons.
+        */}
+        {!hasAnyUnlock && lens_teasers && (
           <div className="bg-white rounded-2xl shadow-md p-6">
             <h2 className="text-xl font-bold text-gray-800 mb-5">
               Your Profile Across 4 Lenses
             </h2>
             <div className="space-y-5">
-              {Object.entries(lens_teasers).map(([key, lens]) => (
-                <div key={key} className="border border-gray-200 rounded-xl p-5">
-                  <div className="flex items-center space-x-2 mb-3">
-                    <span className="text-xl">{lensIcons[key] || '📋'}</span>
-                    <h3 className="font-bold text-indigo-900">{lens.title}</h3>
+              {Object.entries(lens_teasers).map(([key, lens]) => {
+                // Each lens unlocks at its own $30 SKU. The full
+                // SKU→product mapping (FULL_GALAXY → COSMIC_BUNDLE,
+                // others passthrough) lives in `handleUnlockLens`.
+                const productSku = key === 'FULL_GALAXY' ? 'COSMIC_BUNDLE' : key;
+                const isUnlockingThis = unlockingLens === productSku;
+                return (
+                  <div key={key} className="border border-gray-200 rounded-xl p-5">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <span className="text-xl">{lensIcons[key] || '📋'}</span>
+                      <h3 className="font-bold text-indigo-900">{lens.title}</h3>
+                    </div>
+                    <p className="text-gray-600 leading-relaxed mb-3">
+                      {lens.teaser}
+                    </p>
+                    <button
+                      onClick={() => handleUnlockLens(key)}
+                      disabled={isUnlockingThis || !!unlockingLens}
+                      className="text-indigo-600 hover:text-indigo-800 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isUnlockingThis
+                        ? '⏳ Opening checkout…'
+                        : `🔒 Unlock ${lens.title} →`}
+                    </button>
                   </div>
-                  <p className="text-gray-600 leading-relaxed mb-3">
-                    {lens.teaser}
-                  </p>
-                  <button
-                    onClick={handleLensUpgrade}
-                    disabled={upgradingFromLens}
-                    className="text-indigo-600 hover:text-indigo-800 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {upgradingFromLens ? '⏳ Processing...' : '🔒 Unlock Full Report →'}
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
 
-        {/* ── 6. LOCKED SECTIONS (Free only) ── */}
-        {!isPaid && (
+        {/* ── 6. LOCKED SECTIONS (Free only) ──
+            Same rationale as #5: partial-unlock users get their
+            unlock summary from the Lens Picker; this big upsell
+            panel is only useful before the first purchase.
+        */}
+        {!hasAnyUnlock && (
           <LockedSections
             features={locked_features}
             assessmentId={assessmentId}
@@ -1152,9 +1179,13 @@ const ScoreCard = ({
           />
         )}
 
-        {/* ── REPORT LENS SELECTION (Paid) + DOWNLOAD PDF ── */}
+        {/* ── REPORT LENS SELECTION (any unlock) + DOWNLOAD PDF ──
+            Visible to anyone with at least one lens (or the bundle)
+            unlocked, so a $30 single-lens buyer can still download
+            their lens's Data Report from this picker.
+        */}
         <div className="bg-white rounded-2xl shadow-md p-6">
-          {isPaid && (
+          {hasAnyUnlock && (
             <>
               <h2 className="text-xl font-bold text-gray-800 mb-2 text-center">Select Your Data Report Lens</h2>
               <p className="text-gray-500 text-sm text-center mb-1">
@@ -1236,10 +1267,10 @@ const ScoreCard = ({
 
           <div className="text-center">
             <h3 className="text-lg font-bold text-gray-800 mb-1">
-              {isPaid ? '📊 Download Your Data Report (PDF)' : '📄 Download Your Free ScoreCard'}
+              {hasAnyUnlock ? '📊 Download Your Data Report (PDF)' : '📄 Download Your Free ScoreCard'}
             </h3>
             <p className="text-gray-600 text-sm mb-4">
-              {isPaid
+              {hasAnyUnlock
                 ? 'Charts, subvariable bars, applied-domain tables, and AIMS targets — derived directly from the scoring engine.'
                 : 'Save your executive function profile as a PDF for your records.'}
             </p>
@@ -1253,14 +1284,14 @@ const ScoreCard = ({
 
             <button
               onClick={handleDownloadPdf}
-              disabled={downloadingPdf || !assessmentId || (isPaid && !selectedLens)}
+              disabled={downloadingPdf || !assessmentId || (hasAnyUnlock && !selectedLens)}
               className="inline-block bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {downloadingPdf
                 ? '⏳ Generating PDF...'
-                : isPaid && selectedLens
+                : hasAnyUnlock && selectedLens
                 ? `Download ${selectedLens.replace(/_/g, ' ').replace(/FULL GALAXY/, 'Full Galaxy')} Data Report`
-                : isPaid
+                : hasAnyUnlock
                 ? 'Select a Lens to Download'
                 : 'Download Free ScoreCard PDF'}
             </button>

@@ -91,7 +91,15 @@ const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
       const payload = {
         user_id: userEmail || `user_${Date.now()}`,
         user_email: userEmail,
-        report_type: 'STUDENT_SUCCESS',
+        // The assessment itself is *lens-neutral* — the same raw
+        // responses & scoring data apply to every lens. The user's
+        // lens choice lives in their PURCHASES (`paid_products`) and
+        // their generated AI Narrative reports, NOT on the assessment
+        // row. The backend still requires this field to be one of
+        // REPORT_LENSES, so we send the most generic lens as a
+        // placeholder. Display surfaces (e.g. MyReports) must read
+        // `paid_products`, not this field.
+        report_type: 'PERSONAL_LIFESTYLE',
         responses: formattedResponses,
         demographics: demographics || { source: 'web_frontend' },
         include_interpretation: true,

@@ -115,14 +115,30 @@ def _fetch_assessment_payment_record(assessment_id: str) -> dict:
 def get_paid_products(assessment_id: str) -> list[str]:
     """Return the list of SKUs unlocked for this assessment.
 
-    A legacy `payment_status='paid'` row is expanded to ALL SKUs for backwards
-    compatibility with the original "single bundle" model.
+    Read precedence (most-specific wins):
+
+    1. The explicit `paid_products` JSONB list — modern per-SKU model.
+       If non-empty, this is authoritative. A row with
+       ``paid_products=['PERSONAL_LIFESTYLE']`` returns exactly that,
+       even if the legacy ``payment_status='paid'`` flag is also set.
+       (We saw cases where the legacy flag was leftover from an older
+       code path or a fallback write — using it as a global override
+       would silently expand a $30 single-lens unlock into full access.)
+
+    2. The legacy ``payment_status='paid'`` flag — only consulted when
+       no explicit per-SKU data exists. Expanded to ALL SKUs for
+       backwards compatibility with rows that pre-date the
+       ``paid_products`` column migration.
     """
     rec = _fetch_assessment_payment_record(assessment_id)
+
+    if rec["paid_products"]:
+        return rec["paid_products"]
+
     if rec["payment_status"] == "paid":
-        # Legacy global-paid: treat as everything unlocked.
         return list(ALL_PRODUCTS)
-    return rec["paid_products"]
+
+    return []
 
 
 def is_product_paid(assessment_id: str, product: str) -> bool:
@@ -200,10 +216,32 @@ def unlock_products(
 
     except Exception as exc:
         # Most likely a missing `paid_products` column on older schemas.
-        # Fall back to the legacy single-flag unlock so existing deployments
-        # don't lose payment events.
+        # We only fall back to the legacy single-flag unlock when the user
+        # was purchasing COSMIC_BUNDLE (or the full catalog) — in those
+        # cases ``payment_status='paid'`` correctly represents "all SKUs
+        # unlocked".
+        #
+        # For per-lens unlocks (PERSONAL_LIFESTYLE, etc.) the legacy flag
+        # is *too coarse*: writing it would silently expand a $30 single-
+        # lens unlock into full access, because ``get_paid_products``
+        # falls back to the legacy flag when no explicit list exists.
+        # In that case we'd rather fail loudly so the webhook is retried
+        # and the schema gets fixed, than silently grant the wrong tier.
+        legacy_safe = (
+            "COSMIC_BUNDLE" in products
+            or set(products) >= set(ALL_PRODUCTS)
+        )
+        if not legacy_safe:
+            logger.error(
+                f"paid_products write failed ({exc}) for {products}; "
+                f"refusing legacy fallback (would over-grant access). "
+                f"Check schema and retry the webhook."
+            )
+            return False
+
         logger.warning(
-            f"paid_products write failed ({exc}); attempting legacy unlock"
+            f"paid_products write failed ({exc}); attempting legacy "
+            f"unlock for {products}"
         )
         try:
             from scoring_engine.payment_service import unlock_report

@@ -48,33 +48,60 @@ const MyReports = ({ userEmail, onViewReport, onBack }) => {
     }
   };
 
-  const getReportTypeBadge = (reportType) => {
-    const types = {
-      'STUDENT_SUCCESS': { label: 'Student Success', color: 'bg-blue-100 text-blue-800' },
-      'PERSONAL_LIFESTYLE': { label: 'Personal/Lifestyle', color: 'bg-purple-100 text-purple-800' },
-      'PROFESSIONAL_LEADERSHIP': { label: 'Professional/Leadership', color: 'bg-green-100 text-green-800' },
-      'FAMILY_ECOSYSTEM': { label: 'Family/Ecosystem', color: 'bg-pink-100 text-pink-800' },
-    };
-    const type = types[reportType] || { label: reportType, color: 'bg-gray-100 text-gray-800' };
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${type.color}`}>
-        {type.label}
-      </span>
-    );
+  // Maps every SKU to a short label + tile colour. Used to render
+  // per-product badges that reflect what this assessment has actually
+  // unlocked (driven by `paid_products`, not the legacy `report_type`
+  // column which is a required placeholder on every assessment row).
+  const PRODUCT_BADGES = {
+    PERSONAL_LIFESTYLE:      { label: 'Personal / Lifestyle',      color: 'bg-purple-100 text-purple-800 border-purple-200' },
+    STUDENT_SUCCESS:         { label: 'Student Success',           color: 'bg-blue-100 text-blue-800 border-blue-200' },
+    PROFESSIONAL_LEADERSHIP: { label: 'Professional / Leadership', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+    FAMILY_ECOSYSTEM:        { label: 'Family / Ecosystem',        color: 'bg-pink-100 text-pink-800 border-pink-200' },
+    COSMIC_BUNDLE:           { label: 'Cosmic Bundle',             color: 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white border-transparent' },
+    FINANCIAL_DEEP_DIVE:     { label: 'Financial Deep-Dive',       color: 'bg-amber-100 text-amber-800 border-amber-200' },
+    HEALTH_DEEP_DIVE:        { label: 'Health Deep-Dive',          color: 'bg-teal-100 text-teal-800 border-teal-200' },
+    COMPATIBILITY:           { label: 'Compatibility',             color: 'bg-rose-100 text-rose-800 border-rose-200' },
   };
 
-  const getPaymentBadge = (paymentStatus) => {
-    if (paymentStatus === 'paid') {
+  // Renders the access-tier summary for one assessment row. Reads from
+  // the authoritative `paid_products` list (not the legacy
+  // `payment_status` flag, which can lag the per-SKU data on legacy
+  // rows). Free assessments get a single "Free ScoreCard" badge; paid
+  // assessments get one badge per unlocked SKU, with the Cosmic Bundle
+  // collapsing the four lens badges so we don't double-count.
+  const renderAccessBadges = (report) => {
+    const paidProducts = Array.isArray(report.paid_products)
+      ? report.paid_products
+      : [];
+
+    if (paidProducts.length === 0) {
       return (
-        <span className="px-2 py-1 rounded-full text-xs font-bold bg-gradient-to-r from-indigo-500 to-purple-500 text-white">
-          ⭐ Full Report
+        <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+          Free ScoreCard
         </span>
       );
     }
+
+    // If Cosmic Bundle is unlocked, show only that — it implicitly
+    // covers all four lenses, so listing them separately is noise.
+    const display = paidProducts.includes('COSMIC_BUNDLE')
+      ? ['COSMIC_BUNDLE', ...paidProducts.filter(p => p !== 'COSMIC_BUNDLE' && !['PERSONAL_LIFESTYLE','STUDENT_SUCCESS','PROFESSIONAL_LEADERSHIP','FAMILY_ECOSYSTEM'].includes(p))]
+      : paidProducts;
+
     return (
-      <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-        Free ScoreCard
-      </span>
+      <>
+        {display.map((sku) => {
+          const meta = PRODUCT_BADGES[sku] || { label: sku, color: 'bg-gray-100 text-gray-800 border-gray-200' };
+          return (
+            <span
+              key={sku}
+              className={`px-2 py-1 rounded-full text-xs font-semibold border ${meta.color}`}
+            >
+              {sku === 'COSMIC_BUNDLE' ? '⭐ ' : ''}{meta.label}
+            </span>
+          );
+        })}
+      </>
     );
   };
 
@@ -138,9 +165,8 @@ const MyReports = ({ userEmail, onViewReport, onBack }) => {
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        {getPaymentBadge(report.payment_status)}
-                        {getReportTypeBadge(report.report_type)}
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        {renderAccessBadges(report)}
                       </div>
                       
                       <h3 className="text-lg font-semibold text-gray-800 mb-1">
