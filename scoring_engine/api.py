@@ -10,6 +10,7 @@ Endpoints:
 """
 
 import logging
+import os
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Depends, Header, Request
@@ -103,9 +104,20 @@ def create_app(use_database: bool = False) -> FastAPI:
         version="1.0.0",
     )
 
+    # ALLOWED_ORIGINS: comma-separated list of frontend origins.
+    # Set this to your Cloud Run frontend URL in production, e.g.:
+    #   ALLOWED_ORIGINS=https://best-galaxy-frontend-xyz-uc.a.run.app
+    # Defaults to "*" so local dev and test environments work without config.
+    _raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
+    allowed_origins = (
+        [o.strip() for o in _raw_origins.split(",") if o.strip()]
+        if _raw_origins != "*"
+        else ["*"]
+    )
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -357,19 +369,50 @@ def create_app(use_database: bool = False) -> FastAPI:
         if not user:
             raise HTTPException(status_code=401, detail="Invalid email or password")
 
+        # Always try to pull the latest full intake record from
+        # `demographic_intakes`.  That table is written by the 16-question
+        # DemographicForm; the `users.demographics` column only has the 4
+        # quick signup fields.  Merging here lets the frontend know the user
+        # already completed the full intake and should not be sent back to it.
+        if db_available:
+            try:
+                from scoring_engine.demographics import get_demographics
+                intake = get_demographics(email)
+                if intake is not None:
+                    # Merge: intake keys win over signup keys for overlapping
+                    # fields so the richer data is always surfaced.
+                    merged = {**(user.get('demographics') or {}), **intake}
+                    user['demographics'] = merged
+                    user['has_completed_demographics'] = True
+            except Exception as _e:
+                logger.debug("Could not fetch demographics for login merge: %s", _e)
+
         logger.info("User logged in: %s", email)
         return {"success": True, "user": user}
 
     @app.get("/api/v1/auth/user/{email}")
     def get_user(email: str):
         """Get user information by email."""
-        from scoring_engine.auth_service import get_user_by_email
-        
+        from scoring_engine.auth_service import get_user_by_email, normalize_email
+
         user = get_user_by_email(email)
-        
+
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        
+
+        # Same intake-merge logic as login, so the frontend can tell whether
+        # the full 16-question intake has already been completed.
+        if db_available:
+            try:
+                from scoring_engine.demographics import get_demographics
+                intake = get_demographics(normalize_email(email))
+                if intake is not None:
+                    merged = {**(user.get('demographics') or {}), **intake}
+                    user['demographics'] = merged
+                    user['has_completed_demographics'] = True
+            except Exception as _e:
+                logger.debug("Could not fetch demographics for get_user merge: %s", _e)
+
         return {"success": True, "user": user}
 
     # -----------------------------------------------------------------

@@ -146,11 +146,40 @@ function App() {
   // -----------------------------------------------------------------
   useEffect(() => {
     // Restore user session
+    let restoredEmail = null;
     try {
       const savedUser = localStorage.getItem('best_galaxy_current_user');
-      if (savedUser) setUser(JSON.parse(savedUser));
+      if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        setUser(parsed);
+        restoredEmail = parsed?.email || null;
+      }
     } catch (e) {
       /* corrupted */
+    }
+
+    // Re-hydrate the cached user from the backend so flags like
+    // `has_completed_demographics` (added after first login) get picked up
+    // automatically without forcing the user to log out and back in.
+    if (restoredEmail) {
+      axios
+        .get(`/api/v1/auth/user/${encodeURIComponent(restoredEmail)}`)
+        .then((response) => {
+          const fresh = response?.data?.user;
+          if (fresh) {
+            setUser((prev) => {
+              const merged = { ...(prev || {}), ...fresh };
+              try {
+                localStorage.setItem(
+                  'best_galaxy_current_user',
+                  JSON.stringify(merged),
+                );
+              } catch {/* quota / serialization */}
+              return merged;
+            });
+          }
+        })
+        .catch(() => {/* offline / 404 — keep cached copy */});
     }
 
     // Restore "last result" hint (used by the welcome screen's
@@ -274,12 +303,14 @@ function App() {
     setDemographics(userData.demographics);
     localStorage.setItem('best_galaxy_current_user', JSON.stringify(userData));
 
-    // Full demographic intake (16-question form) is required before assessment.
-    // The signup form only collects 4 quick fields, so unless the user
-    // already has the full intake (`age_range` + `roles`), route them to
-    // the demographics view.
+    // If the backend confirms the user already completed the full intake, skip
+    // the DemographicForm and go straight to the assessment.
+    if (userData?.has_completed_demographics) {
+      pushView('assessment');
+      return;
+    }
     const existingDemo = userData?.demographics || {};
-    if (existingDemo.age_range && existingDemo.roles) {
+    if (existingDemo.age_range && existingDemo.roles?.length) {
       pushView('assessment');
     } else {
       pushView('demographics');
@@ -295,13 +326,42 @@ function App() {
     pushView('welcome', { assessmentId: null });
   };
 
-  const handleStartAssessment = () => {
+  const handleStartAssessment = async () => {
     if (!user) {
       pushView('login');
       return;
     }
+    // `has_completed_demographics` is set by the backend when a
+    // `demographic_intakes` record exists for this user.
+    if (user.has_completed_demographics) {
+      setDemographics(user.demographics || {});
+      pushView('assessment');
+      return;
+    }
+
+    // Cached user is stale (e.g. logged in before the flag was added).
+    // Do a live check before falling back to the demographic intake form.
+    try {
+      const response = await axios.get(
+        `/api/v1/auth/user/${encodeURIComponent(user.email)}`,
+      );
+      const fresh = response?.data?.user;
+      if (fresh?.has_completed_demographics) {
+        const merged = { ...user, ...fresh };
+        setUser(merged);
+        try {
+          localStorage.setItem('best_galaxy_current_user', JSON.stringify(merged));
+        } catch {/* quota */}
+        setDemographics(fresh.demographics || {});
+        pushView('assessment');
+        return;
+      }
+    } catch (_e) {
+      /* fall through to local check */
+    }
+
     const existingDemo = user.demographics || {};
-    if (existingDemo.age_range && existingDemo.roles) {
+    if (existingDemo.age_range && existingDemo.roles?.length) {
       setDemographics(existingDemo);
       pushView('assessment');
     } else {
@@ -312,7 +372,7 @@ function App() {
   const handleDemographicsComplete = async (demoData) => {
     setDemographics(demoData);
     if (user) {
-      const updatedUser = { ...user, demographics: demoData };
+      const updatedUser = { ...user, demographics: demoData, has_completed_demographics: true };
       setUser(updatedUser);
       localStorage.setItem('best_galaxy_current_user', JSON.stringify(updatedUser));
 

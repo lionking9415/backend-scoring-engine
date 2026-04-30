@@ -1,0 +1,80 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BEST Galaxy — local Docker Compose
+#
+# Services:
+#   backend   — FastAPI / uvicorn on :8000 (also reachable inside Docker as "backend:8080")
+#   frontend  — nginx serving the React SPA on :3000, proxying /api/ → backend
+#
+# Usage:
+#   docker compose up --build          # first run or after code changes
+#   docker compose up                  # subsequent runs (uses cached images)
+#   docker compose down                # stop and remove containers
+#   docker compose logs -f backend     # tail backend logs
+#   docker compose logs -f frontend    # tail frontend logs
+#
+# Secrets are read from the .env file in this directory (never committed to git).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Backend: FastAPI scoring engine ────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: best-galaxy-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8080"          # host:8000  →  container:8080
+    environment:
+      PORT: "8080"
+      # All secrets come from the .env file (see env_file below).
+      SUPABASE_URL: "${SUPABASE_URL}"
+      SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      STRIPE_SECRET_KEY: "${STRIPE_SECRET_KEY}"
+      STRIPE_PUBLISHABLE_KEY: "${STRIPE_PUBLISHABLE_KEY}"
+      STRIPE_WEBHOOK_SECRET: "${STRIPE_WEBHOOK_SECRET}"
+      STRIPE_PRICE_ID: "${STRIPE_PRICE_ID:-}"
+      STRIPE_PRICE_ID_COSMIC_BUNDLE: "${STRIPE_PRICE_ID_COSMIC_BUNDLE:-}"
+      STRIPE_PRICE_ID_PERSONAL_LIFESTYLE: "${STRIPE_PRICE_ID_PERSONAL_LIFESTYLE:-}"
+      STRIPE_PRICE_ID_STUDENT_SUCCESS: "${STRIPE_PRICE_ID_STUDENT_SUCCESS:-}"
+      STRIPE_PRICE_ID_PROFESSIONAL_LEADERSHIP: "${STRIPE_PRICE_ID_PROFESSIONAL_LEADERSHIP:-}"
+      STRIPE_PRICE_ID_FAMILY_ECOSYSTEM: "${STRIPE_PRICE_ID_FAMILY_ECOSYSTEM:-}"
+      ADMIN_API_TOKEN: "${ADMIN_API_TOKEN:-}"
+      # Allow all origins locally; lock to the frontend URL in production.
+      ALLOWED_ORIGINS: "*"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v1/health', timeout=4)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Frontend: nginx + React SPA ────────────────────────────────────────────
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    container_name: best-galaxy-frontend
+    restart: unless-stopped
+    ports:
+      - "3001:8080"          # host:3001  →  container:8080
+    environment:
+      # nginx proxies /api/ to this URL at container start-up.
+      # Inside Docker's bridge network the backend is reachable as http://backend:8080
+      BACKEND_URL: "http://backend:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

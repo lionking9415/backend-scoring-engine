@@ -1,43 +1,41 @@
 # Frontend Dockerfile for Google Cloud Run
-# Multi-stage build for optimized production image
+# Two-stage build: Node for React, nginx:alpine to serve it.
 
-# Stage 1: Build the React app
+# ── Stage 1: build the React app ─────────────────────────────────────
 FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
+# Install deps first (layer-cached unless package.json changes)
 COPY package*.json ./
+RUN npm ci --prefer-offline
 
-# Install dependencies (including dev dependencies for build)
-RUN npm ci
-
-# Copy source code
+# Copy source and build
 COPY public/ ./public/
 COPY src/ ./src/
-
-# Build the app
 RUN npm run build
 
-# Stage 2: Serve with nginx
+# ── Stage 2: serve with nginx ────────────────────────────────────────
 FROM nginx:alpine
 
-# Copy custom nginx config template
+# gettext provides `envsubst`, used by the entrypoint to substitute
+# ${BACKEND_URL} inside nginx.conf at container start-up.
+RUN apk add --no-cache gettext
+
+# nginx config template — BACKEND_URL substituted at runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf.template
 
-# Copy entrypoint script
+# Custom entrypoint that runs envsubst then starts nginx
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-# Copy built app from builder stage
+# React build artifacts
 COPY --from=builder /app/build /usr/share/nginx/html
 
-# Expose port 8080 (Cloud Run requirement)
+# Cloud Run forwards traffic to $PORT (default 8080); nginx listens on 8080.
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -q --spider http://localhost:8080/health || exit 1
 
-# Use custom entrypoint to substitute env vars
 ENTRYPOINT ["/docker-entrypoint.sh"]
