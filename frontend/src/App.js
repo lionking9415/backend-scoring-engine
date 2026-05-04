@@ -12,6 +12,7 @@ import MyReports from './components/MyReports';
 import ReportViewer from './components/ReportViewer';
 import CosmicDashboard from './components/CosmicDashboard';
 import Account from './components/Account';
+import ErrorBoundary from './components/ErrorBoundary';
 import ConsentGate from './legal/ConsentGate';
 import LegalFooter from './legal/LegalFooter';
 import LegalPage from './legal/LegalPage';
@@ -559,13 +560,15 @@ function App() {
     }
   };
 
+  const [globalError, setGlobalError] = useState(null);
+
   const handleViewSavedResult = async () => {
     if (savedResult) {
       const res = await fetchAssessment(savedResult.resultId);
       if (res?.success) {
         pushView('results', { assessmentId: savedResult.resultId });
       } else {
-        alert('Failed to load saved result. Please try again.');
+        setGlobalError('Failed to load saved result. Please try again.');
       }
     }
   };
@@ -587,12 +590,30 @@ function App() {
     if (res?.success) {
       pushView('results', { assessmentId: reportId });
     } else {
-      alert('Failed to load report. Please try again.');
+      setGlobalError('Failed to load report. Please try again.');
     }
   };
 
   return (
+    <ErrorBoundary>
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Global error toast */}
+      {globalError && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] max-w-md w-full px-4 animate-in fade-in slide-in-from-top-2">
+          <div className="bg-red-50 border border-red-200 rounded-xl shadow-lg p-4 flex items-start gap-3">
+            <span className="text-red-500 text-lg shrink-0">⚠️</span>
+            <p className="text-sm text-red-800 flex-1">{globalError}</p>
+            <button
+              onClick={() => setGlobalError(null)}
+              className="text-gray-400 hover:text-gray-600 text-lg leading-none shrink-0"
+              aria-label="Dismiss"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+      )}
+
       {currentView === 'login' && (
         <Login
           onLogin={handleLogin}
@@ -1053,19 +1074,21 @@ function App() {
           (welcome, my-reports, results-in-flight, etc.) and the welcome
           page never flashes underneath while a fetch is in progress. */}
       {loadingReport && (
-        <div className="fixed inset-0 bg-white flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-md mx-4">
+        <div className="fixed inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md mx-4 shadow-xl">
             <div className="flex flex-col items-center">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mb-4"></div>
+              <div className="animate-spin rounded-full h-14 w-14 border-4 border-indigo-200 border-t-indigo-600 mb-5"></div>
               <h3 className="text-xl font-bold text-gray-800 mb-2">Loading Your Report</h3>
-              <p className="text-gray-600 text-center">
+              <p className="text-gray-500 text-sm text-center">
                 Please wait while we retrieve your assessment data...
               </p>
+              <p className="text-gray-400 text-xs mt-3">This should only take a moment</p>
             </div>
           </div>
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }
 

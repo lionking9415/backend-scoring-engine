@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import UnlockGate from './UnlockGate';
+import { ErrorAlert, SkeletonCard } from './LoadingSpinner';
 import { ShortDisclaimer, FullLegalDisclaimer } from '../legal/Disclaimer';
 
 // The four lens reports that must exist before Cosmic Integration synthesis
@@ -485,21 +486,32 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
 
       {/* Error */}
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          {error}
-        </div>
+        <ErrorAlert
+          error={error}
+          onDismiss={() => setError(null)}
+          onRetry={() => loadReports()}
+          className="mb-4"
+        />
       )}
 
       {/* Loading */}
-      {(loading || generating) && (
+      {loading && !generating && (
+        <div className="space-y-4">
+          <SkeletonCard lines={4} />
+          <SkeletonCard lines={3} />
+        </div>
+      )}
+
+      {generating && (
         <div className="flex flex-col items-center py-16">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-indigo-600 mb-4"></div>
-          <p className="text-gray-600 font-medium">
-            {generating ? 'Generating your personalized report...' : 'Loading reports...'}
+          <div className="relative">
+            <div className="animate-spin rounded-full h-14 w-14 border-4 border-indigo-200 border-t-indigo-600 mb-4"></div>
+          </div>
+          <p className="text-gray-700 font-semibold">
+            Generating your personalized report...
           </p>
-          {generating && (
-            <p className="text-xs text-gray-400 mt-2">This may take 15-30 seconds</p>
-          )}
+          <p className="text-xs text-gray-400 mt-2">This typically takes 15–30 seconds</p>
+          <p className="text-xs text-gray-400 mt-1">Please don't close or refresh this page</p>
         </div>
       )}
 
@@ -564,7 +576,7 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
                     window.URL.revokeObjectURL(url);
                   } catch (err) {
                     console.error('PDF download failed:', err);
-                    alert('Failed to download PDF. Please try again.');
+                    setError('Failed to download PDF. Please try again.');
                   } finally {
                     setDownloadingPdf(false);
                   }

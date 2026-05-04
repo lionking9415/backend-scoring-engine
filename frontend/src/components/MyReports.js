@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import axios from 'axios';
+import { SkeletonCard, ErrorAlert } from './LoadingSpinner';
 
 // Page size for the My Reports list. Anything below this threshold renders
 // the full list with no pagination affordance, so the typical 1-3-report
@@ -12,31 +13,38 @@ const MyReports = ({ userEmail, onViewReport, onBack }) => {
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1); // 1-indexed for human-friendly UI
 
-  useEffect(() => {
-    const fetchReports = async () => {
-      if (!userEmail) {
-        setError('No user email provided');
-        setLoading(false);
-        return;
-      }
+  const fetchReports = useCallback(async () => {
+    if (!userEmail) {
+      setError('No user email provided');
+      setLoading(false);
+      return;
+    }
 
-      try {
-        const response = await axios.get(`/api/v1/user/${encodeURIComponent(userEmail)}/reports`);
-        if (response.data.success) {
-          setReports(response.data.reports);
-        } else {
-          setError('Failed to load reports');
-        }
-      } catch (err) {
-        console.error('Error fetching reports:', err);
-        setError(err.response?.data?.detail || 'Failed to load reports');
-      } finally {
-        setLoading(false);
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.get(`/api/v1/user/${encodeURIComponent(userEmail)}/reports`);
+      if (response.data.success) {
+        setReports(response.data.reports);
+      } else {
+        setError('Failed to load reports');
       }
-    };
-
-    fetchReports();
+    } catch (err) {
+      console.error('Error fetching reports:', err);
+      const detail = err.response?.data?.detail;
+      if (!err.response) {
+        setError('Unable to connect to the server. Please check your internet connection.');
+      } else {
+        setError(typeof detail === 'string' ? detail : 'Failed to load reports. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
   }, [userEmail]);
+
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
 
   // Derive the current page's slice + total page count.  Memoized so the
   // map() over reports doesn't re-run on every unrelated re-render.
@@ -134,10 +142,19 @@ const MyReports = ({ userEmail, onViewReport, onBack }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your reports...</p>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 px-3 py-4 sm:p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8 mb-6">
+            <div className="mb-6">
+              <div className="h-8 bg-gray-200 rounded w-1/3 animate-pulse mb-2" />
+              <div className="h-4 bg-gray-100 rounded w-1/2 animate-pulse" />
+            </div>
+            <div className="space-y-4">
+              <SkeletonCard lines={3} />
+              <SkeletonCard lines={2} />
+              <SkeletonCard lines={3} />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -161,9 +178,12 @@ const MyReports = ({ userEmail, onViewReport, onBack }) => {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <p className="text-red-800">{error}</p>
-            </div>
+            <ErrorAlert
+              error={error}
+              onRetry={fetchReports}
+              onDismiss={() => setError(null)}
+              className="mb-6"
+            />
           )}
 
           {reports.length === 0 && !error && (

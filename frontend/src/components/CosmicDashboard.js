@@ -5,6 +5,7 @@ import LoadFlow from './LoadFlow';
 import StabilizersPanel from './StabilizersPanel';
 import AimsTrack from './AimsTrack';
 import UnlockGate from './UnlockGate';
+import { ErrorAlert, SkeletonCard } from './LoadingSpinner';
 import { ShortDisclaimer, FullLegalDisclaimer } from '../legal/Disclaimer';
 
 const COSMIC_SECTION_ORDER = [
@@ -160,7 +161,17 @@ const CosmicDashboard = ({
     }
   }, [baseUrl, resolvedUserId, resolvedAssessmentId]);
 
-  if (!data) return null;
+  if (!data) {
+    return (
+      <div className="max-w-4xl mx-auto px-3 py-4 sm:p-4">
+        <div className="text-center py-16">
+          <span className="text-5xl mb-4 block">🌌</span>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">No Assessment Data</h2>
+          <p className="text-gray-500 text-sm">Assessment data is not available. Please go back and try again.</p>
+        </div>
+      </div>
+    );
+  }
 
   const sections = cosmicReport?.sections || {};
   const hasNarrative = Object.keys(sections).length > 0;
@@ -189,11 +200,45 @@ const CosmicDashboard = ({
               {downloadingPdf ? 'Generating PDF…' : 'Download Cosmic Dashboard PDF'}
             </button>
             {pdfError && (
-              <p className="text-xs text-red-600 max-w-md">{pdfError}</p>
+              <ErrorAlert
+                error={pdfError}
+                onDismiss={() => setPdfError(null)}
+                onRetry={handleDownloadPdf}
+                className="mt-2 max-w-md mx-auto"
+              />
             )}
           </div>
         )}
       </div>
+
+      {/* Loading skeleton */}
+      {loadingReport && (
+        <div className="space-y-4">
+          <SkeletonCard lines={4} />
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={4} />
+        </div>
+      )}
+
+      {/* Error */}
+      {reportError && !loadingReport && (
+        <ErrorAlert
+          error={reportError}
+          onDismiss={() => setReportError(null)}
+          onRetry={() => window.location.reload()}
+          className="mb-4"
+        />
+      )}
+
+      {/* Generating overlay */}
+      {generating && (
+        <div className="flex flex-col items-center py-16">
+          <div className="animate-spin rounded-full h-14 w-14 border-4 border-purple-200 border-t-purple-600 mb-4"></div>
+          <p className="text-gray-700 font-semibold">Generating Cosmic Integration Report...</p>
+          <p className="text-xs text-gray-400 mt-2">This may take 30–60 seconds</p>
+          <p className="text-xs text-gray-400 mt-1">Please don't close or refresh this page</p>
+        </div>
+      )}
 
       {/* AI narrative — synthesis sections from the cosmic report */}
       {hasNarrative && sections.cosmic_snapshot && (

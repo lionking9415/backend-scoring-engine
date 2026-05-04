@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { ErrorAlert } from './LoadingSpinner';
 import { PAYMENT_ACK } from '../legal/legalText';
 
 const LockedSections = ({
@@ -98,9 +99,12 @@ const LockedSections = ({
         </p>
         
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            {error}
-          </div>
+          <ErrorAlert
+            error={error}
+            onDismiss={() => setError(null)}
+            onRetry={handleUpgrade}
+            className="mb-4"
+          />
         )}
         
         <button 

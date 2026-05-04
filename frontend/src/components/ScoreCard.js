@@ -1,5 +1,6 @@
 import React from 'react';
 import LockedSections from './LockedSections';
+import { ErrorAlert } from './LoadingSpinner';
 import { ShortDisclaimer, FullLegalDisclaimer } from '../legal/Disclaimer';
 import { PAYMENT_ACK } from '../legal/legalText';
 
@@ -122,6 +123,7 @@ const ScoreCard = ({
   const [pdfError, setPdfError] = React.useState(null);
   const [expandedSections, setExpandedSections] = React.useState({});
   const [selectedLens, setSelectedLens] = React.useState(null);
+  const [checkoutError, setCheckoutError] = React.useState(null);
 
   // 🔷 9: Unified dashboard — detect paid vs free and normalize.
   // Trust the server-provided paidProducts list first; fall back to the
@@ -187,8 +189,22 @@ const ScoreCard = ({
 
   if (!data) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-600">No results available</p>
+      <div className="min-h-screen flex items-center justify-center px-4 py-8">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-6 sm:p-8 text-center">
+          <span className="text-5xl mb-4 block">📊</span>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">No Results Available</h2>
+          <p className="text-gray-500 text-sm mb-6">
+            We couldn't find assessment data to display. This may happen if you navigated here directly.
+          </p>
+          {onRestart && (
+            <button
+              onClick={onRestart}
+              className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl transition-all shadow-lg"
+            >
+              Go to Dashboard
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -300,12 +316,13 @@ const ScoreCard = ({
   // Initiate Stripe checkout for a specific lens SKU. FULL_GALAXY maps to
   // the COSMIC_BUNDLE product since there is no standalone "FULL_GALAXY" SKU.
   const handleUnlockLens = async (lensKey) => {
+    setCheckoutError(null);
     if (!assessmentId) {
-      alert('No assessment ID available');
+      setCheckoutError('No assessment ID available.');
       return;
     }
     if (!userEmail) {
-      alert('Please log in to unlock this lens');
+      setCheckoutError('Please log in to unlock this lens.');
       return;
     }
     const product = lensKey === 'FULL_GALAXY' ? 'COSMIC_BUNDLE' : lensKey;
@@ -325,11 +342,15 @@ const ScoreCard = ({
         window.location.href = response.data.session.checkout_url;
         return;
       }
-      const msg = response.data?.session?.error || 'Failed to start checkout. Please try again.';
-      alert(msg);
+      setCheckoutError(response.data?.session?.error || 'Failed to start checkout. Please try again.');
     } catch (err) {
-      const msg = err.response?.data?.detail || err.message || 'Checkout request failed.';
-      alert(`Could not start checkout: ${msg}`);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail : err.message || 'Checkout request failed.';
+      if (!err.response) {
+        setCheckoutError('Unable to connect to the server. Please check your internet connection.');
+      } else {
+        setCheckoutError(msg);
+      }
     } finally {
       setUnlockingLens(null);
     }
@@ -1140,6 +1161,15 @@ const ScoreCard = ({
           </div>
         )}
 
+        {/* Checkout error (checkout / unlock lens) */}
+        {checkoutError && (
+          <ErrorAlert
+            error={checkoutError}
+            onDismiss={() => setCheckoutError(null)}
+            className="mb-0"
+          />
+        )}
+
         {/* ── 5. FOUR LENS TEASER SECTION (Free only) ──
             Hidden once the user has any unlock — at that point the
             Lens Picker below is the canonical place to see what's
@@ -1298,10 +1328,12 @@ const ScoreCard = ({
             </p>
 
             {pdfError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                <p className="font-semibold mb-1">Download Failed</p>
-                <p>{pdfError}</p>
-              </div>
+              <ErrorAlert
+                error={pdfError}
+                onDismiss={() => setPdfError(null)}
+                onRetry={handleDownloadPdf}
+                className="mb-4"
+              />
             )}
 
             <button

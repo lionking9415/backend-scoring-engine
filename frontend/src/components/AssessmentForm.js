@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { ErrorAlert } from './LoadingSpinner';
 
 const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
   const [questions, setQuestions] = useState([]);
@@ -11,20 +12,25 @@ const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
   const [animating, setAnimating] = useState(false);
   const [slideDir, setSlideDir] = useState('right');
 
-  useEffect(() => {
-    const fetchQuestions = async () => {
-      try {
-        const response = await axios.get('/api/v1/questions');
-        setQuestions(response.data.questions || []);
-        setLoading(false);
-      } catch (err) {
-        console.log('Using fallback questions');
-        setQuestions(generateFallbackQuestions());
-        setLoading(false);
-      }
-    };
-    fetchQuestions();
+  const [fetchError, setFetchError] = useState(null);
+
+  const fetchQuestions = useCallback(async () => {
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const response = await axios.get('/api/v1/questions');
+      setQuestions(response.data.questions || []);
+    } catch (err) {
+      console.log('Using fallback questions');
+      setQuestions(generateFallbackQuestions());
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchQuestions();
+  }, [fetchQuestions]);
 
   const generateFallbackQuestions = () => {
     const subdomains = [
@@ -109,7 +115,13 @@ const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
       const response = await axios.post('/api/v1/assess', payload);
       onComplete(response.data.data, response.data.result_id);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to submit. Please try again.');
+      const detail = err.response?.data?.detail;
+      const message = detail && typeof detail === 'object' ? detail.message : detail;
+      if (!err.response) {
+        setError('Unable to connect to the server. Please check your internet connection and try again.');
+      } else {
+        setError(message || 'Failed to submit your assessment. Please try again.');
+      }
       setSubmitting(false);
     }
   };
@@ -236,9 +248,12 @@ const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
             </div>
 
             {error && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm text-center">
-                {error}
-              </div>
+              <ErrorAlert
+                error={error}
+                onDismiss={() => setError(null)}
+                onRetry={isComplete ? handleSubmit : undefined}
+                className="mt-4"
+              />
             )}
           </div>
 
