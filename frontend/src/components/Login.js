@@ -1,11 +1,28 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-const Login = ({ onLogin, onSwitchToSignup }) => {
+const Login = ({ onLogin, onSwitchToSignup, onForgotPassword }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+
+  const handleResendConfirmation = async () => {
+    setResending(true);
+    try {
+      await axios.post('/api/v1/auth/resend-confirmation', {
+        email: email.trim().toLowerCase(),
+      });
+      setResent(true);
+    } catch (_) {
+      // endpoint always succeeds
+    } finally {
+      setResending(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -43,8 +60,12 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
       console.error('Login error:', err);
       const status = err.response?.status;
       const detail = err.response?.data?.detail;
+      const code = detail && typeof detail === 'object' ? detail.code : null;
       const message = detail && typeof detail === 'object' ? detail.message : detail;
-      if (status === 401) {
+      if (status === 403 && code === 'email_not_confirmed') {
+        setEmailNotConfirmed(true);
+        setError(message);
+      } else if (status === 401) {
         setError('Invalid email or password');
       } else if (message) {
         setError(message);
@@ -57,8 +78,8 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+    <div className="min-h-screen flex items-center justify-center px-4 py-8">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-6 sm:p-8">
         <div className="text-center mb-6">
           <span className="text-4xl mb-3 block">🔐</span>
           <h2 className="text-2xl font-bold text-indigo-900 mb-2">
@@ -96,11 +117,34 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               required
             />
+            {onForgotPassword && (
+              <div className="text-right mt-1">
+                <button
+                  type="button"
+                  onClick={onForgotPassword}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
           </div>
 
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
               {error}
+              {emailNotConfirmed && (
+                <div className="mt-2 pt-2 border-t border-red-200">
+                  <button
+                    type="button"
+                    onClick={handleResendConfirmation}
+                    disabled={resending || resent}
+                    className="text-indigo-600 hover:text-indigo-800 font-semibold text-xs disabled:opacity-50"
+                  >
+                    {resent ? '✓ Confirmation email resent — check your inbox' : resending ? 'Sending...' : 'Resend confirmation email'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

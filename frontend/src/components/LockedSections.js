@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { PAYMENT_ACK } from '../legal/legalText';
 
 const LockedSections = ({
   features,
@@ -111,6 +112,9 @@ const LockedSections = ({
         </button>
         <p className="text-gray-400 text-xs mt-2">
           {loading ? 'Redirecting to secure checkout...' : 'Secure payment via Stripe'}
+        </p>
+        <p className="text-gray-500 text-xs italic mt-2">
+          {PAYMENT_ACK}
         </p>
       </div>
     </div>

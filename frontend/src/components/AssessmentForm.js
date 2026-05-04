@@ -140,7 +140,7 @@ const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
   const selected = responses[currentQ.item_id];
 
   return (
-    <div className="min-h-screen flex flex-col p-4">
+    <div className="min-h-screen flex flex-col px-3 py-4 sm:p-4">
 
       {/* ── TOP BAR: visual progress ── */}
       <div className="max-w-2xl w-full mx-auto mb-4">
@@ -173,10 +173,10 @@ const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
       {/* ── QUESTION CARD ── */}
       <div className="flex-1 flex items-center justify-center">
         <div className={`max-w-2xl w-full transition-all duration-200 ${animating ? (slideDir === 'right' ? 'opacity-0 translate-x-8' : 'opacity-0 -translate-x-8') : 'opacity-100 translate-x-0'}`}>
-          <div className="bg-white rounded-2xl shadow-xl p-8 md:p-10">
+          <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8 md:p-10">
 
             {/* Question text */}
-            <p className="text-xl md:text-2xl font-semibold text-gray-800 text-center leading-relaxed mb-8">
+            <p className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800 text-center leading-relaxed mb-6 sm:mb-8">
               {currentQ.item_text}
             </p>
 
@@ -190,19 +190,19 @@ const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
                   <button
                     key={letter}
                     onClick={() => handleSelect(letter)}
-                    className={`w-full flex items-center p-4 md:p-5 rounded-xl border-2 transition-all duration-200 transform
+                    className={`w-full flex items-center p-3 sm:p-4 md:p-5 rounded-xl border-2 transition-all duration-200 transform
                       ${isSelected
                         ? `${s.activeBg} ${s.activeText} border-transparent shadow-lg scale-[1.02]`
                         : `${s.bg} ${s.text} ${s.border} hover:shadow-md hover:scale-[1.01]`
                       }`}
                   >
                     {/* Visual indicator dot */}
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shrink-0 transition-colors
+                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-base sm:text-lg font-bold shrink-0 transition-colors
                       ${isSelected ? 'bg-white/30' : 'bg-white'}`}>
                       {isSelected ? '✓' : letter}
                     </div>
 
-                    <span className="ml-4 text-left font-medium text-base md:text-lg">
+                    <span className="ml-3 sm:ml-4 text-left font-medium text-sm sm:text-base md:text-lg">
                       {text}
                     </span>
                   </button>
@@ -243,11 +243,11 @@ const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
           </div>
 
           {/* ── NAVIGATION ── */}
-          <div className="flex justify-between items-center mt-6 px-2">
+          <div className="flex justify-between items-center mt-6 gap-2">
             <button
               onClick={handlePrev}
               disabled={currentIndex === 0}
-              className={`px-5 py-3 rounded-xl font-semibold transition-all ${
+              className={`px-3 sm:px-5 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold transition-all ${
                 currentIndex === 0
                   ? 'text-gray-300 cursor-not-allowed'
                   : 'text-gray-600 hover:bg-white hover:shadow-md'
@@ -256,7 +256,7 @@ const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
               ← Back
             </button>
 
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center space-x-1 shrink-0">
               {/* Quick jump dots for current subdomain (4 questions) */}
               {(() => {
                 const subdomainStart = Math.floor(currentIndex / 4) * 4;
@@ -284,7 +284,7 @@ const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
               <button
                 onClick={handleNext}
                 disabled={!selected}
-                className={`px-5 py-3 rounded-xl font-semibold transition-all ${
+                className={`px-3 sm:px-5 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold transition-all ${
                   selected
                     ? 'text-indigo-600 hover:bg-white hover:shadow-md'
                     : 'text-gray-300 cursor-not-allowed'
@@ -296,7 +296,7 @@ const AssessmentForm = ({ onComplete, demographics, userEmail }) => {
               <button
                 onClick={handleSubmit}
                 disabled={!isComplete || submitting}
-                className={`px-6 py-3 rounded-xl font-bold transition-all ${
+                className={`px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-bold transition-all ${
                   isComplete && !submitting
                     ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg hover:shadow-xl'
                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'

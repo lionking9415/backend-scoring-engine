@@ -182,9 +182,9 @@ const DemographicForm = ({ onComplete, onSkip }) => {
   const progress = ((currentSection + 1) / SECTIONS.length) * 100;
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center px-3 py-6 sm:p-4">
       <div className="max-w-xl w-full">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="bg-white rounded-2xl shadow-xl p-5 sm:p-8">
           {/* Progress */}
           <div className="mb-6">
             <div className="flex justify-between items-center mb-2">

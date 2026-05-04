@@ -5,9 +5,16 @@ import DemographicForm from './components/DemographicForm';
 import PaymentSuccess from './components/PaymentSuccess';
 import Login from './components/Login';
 import Signup from './components/Signup';
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword from './components/ResetPassword';
+import ConfirmEmail from './components/ConfirmEmail';
 import MyReports from './components/MyReports';
 import ReportViewer from './components/ReportViewer';
 import CosmicDashboard from './components/CosmicDashboard';
+import Account from './components/Account';
+import ConsentGate from './legal/ConsentGate';
+import LegalFooter from './legal/LegalFooter';
+import LegalPage from './legal/LegalPage';
 import axios from 'axios';
 
 // =============================================================================
@@ -32,10 +39,16 @@ import axios from 'axios';
 
 const VIEW_TO_PATH = {
   welcome: () => '/',
+  dashboard: () => '/dashboard',
+  account: () => '/account',
   login: () => '/login',
   signup: () => '/signup',
+  'forgot-password': () => '/forgot-password',
+  'reset-password': () => '/reset-password',
+  'confirm-email': () => '/confirm-email',
   demographics: () => '/demographics',
   assessment: () => '/assessment',
+  consent: () => '/consent',
   'my-reports': () => '/my-reports',
   results: (id) => (id ? `/report/${encodeURIComponent(id)}` : '/'),
   'ai-reports': (id) =>
@@ -43,6 +56,9 @@ const VIEW_TO_PATH = {
   'cosmic-dashboard': (id) =>
     id ? `/report/${encodeURIComponent(id)}/cosmic` : '/my-reports',
   'payment-success': () => '/success',
+  'terms-of-use': () => '/terms-of-use',
+  'privacy-policy': () => '/privacy-policy',
+  'data-use': () => '/data-use',
 };
 
 function parseUrl(pathname) {
@@ -51,16 +67,31 @@ function parseUrl(pathname) {
     return { view: 'welcome', assessmentId: null };
   }
   const trimmed = pathname.replace(/\/+$/, '');
+  if (trimmed === '/dashboard')
+    return { view: 'dashboard', assessmentId: null };
+  if (trimmed === '/account')
+    return { view: 'account', assessmentId: null };
   if (trimmed === '/login') return { view: 'login', assessmentId: null };
   if (trimmed === '/signup') return { view: 'signup', assessmentId: null };
+  if (trimmed === '/forgot-password') return { view: 'forgot-password', assessmentId: null };
+  if (trimmed === '/reset-password') return { view: 'reset-password', assessmentId: null };
+  if (trimmed === '/confirm-email') return { view: 'confirm-email', assessmentId: null };
   if (trimmed === '/demographics')
     return { view: 'demographics', assessmentId: null };
   if (trimmed === '/assessment')
     return { view: 'assessment', assessmentId: null };
+  if (trimmed === '/consent')
+    return { view: 'consent', assessmentId: null };
   if (trimmed === '/my-reports')
     return { view: 'my-reports', assessmentId: null };
   if (trimmed === '/success')
     return { view: 'payment-success', assessmentId: null };
+  if (trimmed === '/terms-of-use')
+    return { view: 'terms-of-use', assessmentId: null };
+  if (trimmed === '/privacy-policy')
+    return { view: 'privacy-policy', assessmentId: null };
+  if (trimmed === '/data-use')
+    return { view: 'data-use', assessmentId: null };
 
   const m = trimmed.match(/^\/report\/([^/]+)(\/(ai|cosmic))?$/);
   if (m) {
@@ -79,6 +110,22 @@ function buildPath(view, assessmentId) {
   return fn ? fn(assessmentId) : '/';
 }
 
+// True when the very first paint will need to fetch a report — used to
+// pre-arm `loadingReport` and avoid flashing the welcome page for a frame
+// before the overlay appears.
+function _needsInitialReportFetch() {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (window.localStorage.getItem('best_galaxy_pending_unlock')) return true;
+  } catch (e) {
+    /* private mode / quota — fall through */
+  }
+  const path = window.location?.pathname || '';
+  // Any URL that is scoped to a specific assessment will need a backend fetch.
+  return /^\/(results|ai-reports|cosmic-dashboard|payment-success)(\/|$)/.test(path)
+    || path === '/success';
+}
+
 function App() {
   const [currentView, setCurrentView] = useState('welcome');
   const [assessmentData, setAssessmentData] = useState(null);
@@ -87,7 +134,10 @@ function App() {
   const [demographics, setDemographics] = useState(null);
   const [savedResult, setSavedResult] = useState(null);
   const [user, setUser] = useState(null);
-  const [loadingReport, setLoadingReport] = useState(false);
+  // Lazy initializer: when we already know (from URL or pending-unlock
+  // localStorage) that we'll be fetching a report, start in the loading
+  // state so the welcome page never gets a chance to flash.
+  const [loadingReport, setLoadingReport] = useState(_needsInitialReportFetch);
 
   // -----------------------------------------------------------------
   // Navigation helper — single entry point for all view changes so the
@@ -191,9 +241,13 @@ function App() {
       /* corrupted */
     }
 
-    // Stripe checkout completion always wins.
+    // Stripe checkout completion always wins.  PaymentSuccess fetches
+    // its own data from the `assessment_id` query string, so we clear the
+    // app-level loading overlay (it was pre-armed by
+    // `_needsInitialReportFetch` for the welcome-flash fix).
     if (window.location.pathname === '/success') {
       setCurrentView('payment-success');
+      setLoadingReport(false);
       return;
     }
 
@@ -261,9 +315,33 @@ function App() {
         }
       });
     } else if (parsed.view !== 'welcome') {
-      setCurrentView(parsed.view);
+      // Logged-out user trying to load /dashboard or /account — send them
+      // home.  (handleLogin/handleSignup are responsible for flipping the
+      // URL the other way once authenticated.)
+      const requiresAuth = parsed.view === 'dashboard' || parsed.view === 'account';
+      if (requiresAuth && !restoredEmail) {
+        try {
+          window.history.replaceState({}, '', '/');
+        } catch (e) {/* ignore */}
+        setCurrentView('welcome');
+      } else {
+        setCurrentView(parsed.view);
+      }
+      // No async fetch happens here, so clear the pre-armed overlay
+      // (otherwise users land on a non-report view stuck on "Loading…").
+      setLoadingReport(false);
+    } else {
+      // Plain '/'.  If the user is already authenticated, route them to
+      // the focused dashboard instead of the marketing page.
+      if (restoredEmail) {
+        try {
+          window.history.replaceState({}, '', '/dashboard');
+        } catch (e) {/* ignore */}
+        setCurrentView('dashboard');
+      }
+      // No async fetch will run; release the overlay either way.
+      setLoadingReport(false);
     }
-    // Otherwise we stay on default 'welcome'.
   }, [fetchAssessment]);
 
   // -----------------------------------------------------------------
@@ -295,7 +373,26 @@ function App() {
   const handleLogin = (userData) => {
     setUser(userData);
     localStorage.setItem('best_galaxy_current_user', JSON.stringify(userData));
-    pushView('welcome');
+    pushView('dashboard');
+  };
+
+  // Called by <Account/> after a successful name change.  Merges the fresh
+  // user object into state and refreshes the localStorage cache so the
+  // dashboard greeting and toolbar show the new name without a full reload.
+  const handleAccountUpdated = (freshUser) => {
+    if (!freshUser) return;
+    setUser((prev) => {
+      const merged = { ...(prev || {}), ...freshUser };
+      try {
+        localStorage.setItem(
+          'best_galaxy_current_user',
+          JSON.stringify(merged),
+        );
+      } catch (e) {
+        /* quota / serialization */
+      }
+      return merged;
+    });
   };
 
   const handleSignup = (userData) => {
@@ -304,7 +401,9 @@ function App() {
     localStorage.setItem('best_galaxy_current_user', JSON.stringify(userData));
 
     // If the backend confirms the user already completed the full intake, skip
-    // the DemographicForm and go straight to the assessment.
+    // the DemographicForm and go straight to the assessment.  Otherwise,
+    // park them on the dashboard so they can review their account before
+    // starting the intake/consent flow.
     if (userData?.has_completed_demographics) {
       pushView('assessment');
       return;
@@ -313,7 +412,7 @@ function App() {
     if (existingDemo.age_range && existingDemo.roles?.length) {
       pushView('assessment');
     } else {
-      pushView('demographics');
+      pushView('dashboard');
     }
   };
 
@@ -331,6 +430,29 @@ function App() {
       pushView('login');
       return;
     }
+
+    // Pre-assessment consent gate.  If the user hasn't recorded their legal
+    // acknowledgement for the current legal version, route them through the
+    // consent screen first.  Stored in localStorage AND in the backend
+    // (`/api/v1/consent`) so we have an audit trail.
+    let consented = false;
+    try {
+      const raw = localStorage.getItem('best_galaxy_consent');
+      if (raw) {
+        const c = JSON.parse(raw);
+        const { LEGAL_VERSION } = await import('./legal/legalText');
+        consented = c?.legal_version === LEGAL_VERSION
+          && c?.consents?.terms === true
+          && c?.consents?.responsibility === true;
+      }
+    } catch (_e) {
+      /* corrupted localStorage — re-consent */
+    }
+    if (!consented) {
+      pushView('consent');
+      return;
+    }
+
     // `has_completed_demographics` is set by the backend when a
     // `demographic_intakes` record exists for this user.
     if (user.has_completed_demographics) {
@@ -399,6 +521,18 @@ function App() {
     pushView('assessment');
   };
 
+  // Consent gate handler — fires after the user agrees and the consent
+  // has been logged to the backend.  Continues into the same flow as
+  // `handleStartAssessment` would have, just past the consent check.
+  const handleConsentAgree = () => {
+    if (user?.has_completed_demographics) {
+      setDemographics(user.demographics || {});
+      pushView('assessment');
+    } else {
+      pushView('demographics');
+    }
+  };
+
   const handleAssessmentComplete = (data, resultId) => {
     setAssessmentData(data);
     setAssessmentId(resultId);
@@ -458,11 +592,12 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 to-indigo-100">
       {currentView === 'login' && (
         <Login
           onLogin={handleLogin}
           onSwitchToSignup={() => pushView('signup')}
+          onForgotPassword={() => pushView('forgot-password')}
         />
       )}
 
@@ -473,119 +608,363 @@ function App() {
         />
       )}
 
-      {currentView === 'welcome' && (
+      {currentView === 'forgot-password' && (
+        <ForgotPassword
+          onSwitchToLogin={() => pushView('login')}
+        />
+      )}
+
+      {currentView === 'reset-password' && (
+        <ResetPassword
+          token={new URLSearchParams(window.location.search).get('token')}
+          onSwitchToLogin={() => pushView('login')}
+        />
+      )}
+
+      {currentView === 'confirm-email' && (
+        <ConfirmEmail
+          token={new URLSearchParams(window.location.search).get('token')}
+          onSwitchToLogin={() => pushView('login')}
+        />
+      )}
+
+      {currentView === 'welcome' && !loadingReport && (
         <>
-          <div className="flex items-center justify-center min-h-screen p-4">
-            <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-8">
-              {user && (
-                <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-200">
-                  <div>
-                    <p className="text-sm text-gray-500">Welcome back,</p>
-                    <p className="text-lg font-semibold text-indigo-900">
-                      {user.name || user.email}
-                    </p>
-                  </div>
-                  <div className="flex gap-4">
-                    <button
-                      onClick={handleViewReports}
-                      className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold transition-colors"
-                    >
-                      📊 My Reports
-                    </button>
-                    <button
-                      onClick={handleLogout}
-                      className="text-sm text-gray-600 hover:text-gray-800 font-medium transition-colors"
-                    >
-                      Logout
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="text-center">
-                <h1 className="text-4xl font-bold text-indigo-900 mb-4">
-                  BEST Executive Function Galaxy Assessment™
-                </h1>
-                <p className="text-lg text-gray-600 mb-8">
-                  Discover your executive function profile across 13 subdomains.
-                  Takes approximately 10–15 minutes. <strong>100% Free.</strong>
-                </p>
-                <div className="bg-indigo-50 rounded-xl p-6 mb-8">
-                  <h2 className="text-xl font-semibold text-indigo-900 mb-3">
-                    Your Free ScoreCard Includes:
-                  </h2>
-                  <ul className="text-left space-y-2 text-gray-700">
-                    <li className="flex items-start">
-                      <span className="text-indigo-600 mr-2">✓</span>
-                      <span>
-                        Your unique executive function <strong>Archetype</strong>
-                      </span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-indigo-600 mr-2">✓</span>
-                      <span>
-                        Executive function <strong>constellation</strong> visualization
-                      </span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-indigo-600 mr-2">✓</span>
-                      <span>
-                        <strong>Load Balance</strong> indicator (PEI × BHP)
-                      </span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-indigo-600 mr-2">✓</span>
-                      <span>
-                        Top <strong>strengths</strong> and <strong>growth edges</strong>
-                      </span>
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-indigo-600 mr-2">✓</span>
-                      <span>
-                        Preview across <strong>4 life lenses</strong> (Personal,
-                        Student, Professional, Family)
-                      </span>
-                    </li>
-                  </ul>
-                </div>
-
+          {/* ── Visitor top bar (logged-out only — authenticated users
+              are redirected to /dashboard on mount). ── */}
+          <div className="bg-white/80 backdrop-blur border-b border-gray-200 sticky top-0 z-30">
+            <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 flex justify-between items-center gap-2">
+              <p className="text-sm font-bold text-indigo-900 tracking-tight truncate min-w-0">
+                BEST Galaxy&trade;
+              </p>
+              <div className="flex gap-2 shrink-0">
                 <button
-                  onClick={handleStartAssessment}
-                  className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold py-4 px-10 rounded-xl text-lg transition-all duration-200 shadow-lg hover:shadow-xl"
+                  onClick={() => pushView('login')}
+                  className="text-xs sm:text-sm text-indigo-700 hover:text-indigo-900 font-semibold px-2 sm:px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors"
                 >
-                  Begin Free Assessment
+                  Sign in
                 </button>
-
-                {savedResult && (
-                  <div className="mt-6 pt-6 border-t border-gray-200">
-                    <p className="text-gray-500 text-sm mb-3">
-                      You have a previous result from{' '}
-                      {new Date(savedResult.timestamp).toLocaleDateString()}
-                    </p>
-                    <button
-                      onClick={handleViewSavedResult}
-                      className="text-indigo-600 hover:text-indigo-800 font-semibold text-sm underline transition-colors"
-                    >
-                      View My Previous ScoreCard
-                    </button>
-                  </div>
-                )}
+                <button
+                  onClick={() => pushView('signup')}
+                  className="text-xs sm:text-sm text-white font-semibold px-3 sm:px-4 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 transition-colors shadow-sm"
+                >
+                  Get started
+                </button>
               </div>
             </div>
           </div>
-          {loadingReport && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md mx-4">
-                <div className="flex flex-col items-center">
-                  <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mb-4"></div>
-                  <h3 className="text-xl font-bold text-gray-800 mb-2">Loading Your Report</h3>
-                  <p className="text-gray-600 text-center">
-                    Please wait while we retrieve your assessment data...
-                  </p>
+
+          {/* ── HERO ── */}
+          <section className="relative overflow-hidden bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-950 text-white">
+            <div
+              aria-hidden="true"
+              className="absolute -top-32 -left-32 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"
+            />
+            <div
+              aria-hidden="true"
+              className="absolute -bottom-32 -right-32 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"
+            />
+
+            <div className="relative max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-20 text-center">
+              <span className="inline-block px-3 py-1 mb-5 sm:mb-6 text-[10px] sm:text-xs font-semibold tracking-wider uppercase bg-white/10 border border-white/20 rounded-full text-indigo-100 backdrop-blur">
+                BEST Galaxy&trade; Executive Function Assessment
+              </span>
+              <h1 className="text-3xl sm:text-4xl md:text-6xl font-extrabold leading-tight tracking-tight mb-5 sm:mb-6">
+                Map Your Executive
+                <span className="block bg-gradient-to-r from-amber-300 via-pink-300 to-purple-300 bg-clip-text text-transparent">
+                  Function Galaxy
+                </span>
+              </h1>
+              <p className="text-base sm:text-lg md:text-xl text-indigo-100/90 max-w-2xl mx-auto mb-8 sm:mb-10 leading-relaxed">
+                A research-grounded look at how your internal capacity (BHP) interacts
+                with your environmental pressure (PEI) &mdash; across 13 subdomains and four life lenses.
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8 sm:mb-10">
+                <button
+                  onClick={handleStartAssessment}
+                  className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 bg-white text-indigo-900 font-bold rounded-xl text-base sm:text-lg shadow-2xl hover:shadow-amber-500/30 hover:-translate-y-0.5 transition-all"
+                >
+                  Begin Free Assessment &rarr;
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto text-center">
+                <div>
+                  <div className="text-3xl md:text-4xl font-bold text-amber-300">13</div>
+                  <div className="text-[10px] md:text-xs uppercase tracking-wider text-indigo-200/80 mt-1">
+                    Subdomains
+                  </div>
+                </div>
+                <div className="border-x border-white/10">
+                  <div className="text-3xl md:text-4xl font-bold text-amber-300">4</div>
+                  <div className="text-[10px] md:text-xs uppercase tracking-wider text-indigo-200/80 mt-1">
+                    Life Lenses
+                  </div>
+                </div>
+                <div>
+                  <div className="text-3xl md:text-4xl font-bold text-amber-300">10&ndash;15</div>
+                  <div className="text-[10px] md:text-xs uppercase tracking-wider text-indigo-200/80 mt-1">
+                    Minutes
+                  </div>
                 </div>
               </div>
             </div>
-          )}
+          </section>
+
+          {/* ── WHAT YOU GET ── */}
+          <section className="bg-gray-50 py-10 sm:py-12 px-4 sm:px-6">
+            <div className="max-w-7xl mx-auto">
+              <div className="text-center mb-8">
+                <p className="text-xs md:text-sm font-semibold uppercase tracking-wider text-indigo-600 mb-2">
+                  100% Free ScoreCard
+                </p>
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">
+                  What you&rsquo;ll receive
+                </h2>
+                <p className="text-gray-600 mt-3 max-w-2xl mx-auto text-sm md:text-base">
+                  Every assessment generates a personalized scorecard you can download as a PDF
+                  &mdash; no credit card, no tier-gating on the basics.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {[
+                  { icon: '\u{1F30C}', title: 'Galaxy Archetype', desc: 'A unique profile name that describes how your executive function operates as a system.' },
+                  { icon: '\u2728', title: 'Constellation Map', desc: 'Visualization of all 13 EF subdomain scores, showing where you stabilize and where you bend under load.' },
+                  { icon: '\u2696\uFE0F', title: 'Load Balance Indicator', desc: 'See how your internal capacity (BHP) measures against your external pressure (PEI) \u2014 the core of EF load theory.' },
+                  { icon: '\u{1F525}', title: 'Strengths & Growth Edges', desc: 'The three areas where you thrive, plus the three growth zones most worth investing in next.' },
+                  { icon: '\u{1F52D}', title: '4-Lens Preview', desc: 'A glimpse of how your profile expresses across Personal, Student, Professional, and Family lenses.' },
+                  { icon: '\u{1F4C4}', title: 'Downloadable PDF', desc: 'Take your scorecard with you. Reflowed text, accurate progress bars, full disclaimer included.' },
+                ].map(({ icon, title, desc }, i) => (
+                  <div
+                    key={i}
+                    className="bg-white rounded-2xl p-6 border border-gray-200 hover:border-indigo-300 hover:shadow-md transition-all"
+                  >
+                    <div className="text-3xl mb-3" aria-hidden="true">{icon}</div>
+                    <h3 className="font-semibold text-gray-900 mb-2">{title}</h3>
+                    <p className="text-sm text-gray-600 leading-relaxed">{desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* ── HOW IT WORKS ── */}
+          <section className="bg-white py-10 sm:py-12 px-4 sm:px-6">
+            <div className="max-w-6xl mx-auto">
+              <div className="text-center mb-8">
+                <p className="text-xs md:text-sm font-semibold uppercase tracking-wider text-indigo-600 mb-2">
+                  Your Journey
+                </p>
+                <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">How it works</h2>
+              </div>
+              <ol className="space-y-5 sm:space-y-6">
+                {[
+                  { n: '01', title: 'Tell us a little about yourself', desc: 'A short demographic intake helps us interpret your results in context (age range, current role, life stage).' },
+                  { n: '02', title: 'Take the BEST Galaxy assessment', desc: 'Questions calibrated by Executive Function Load Theory (PEI \u00d7 BHP). Most people finish in 10\u201315 minutes.' },
+                  { n: '03', title: 'Receive your free ScoreCard', desc: 'See your archetype, constellation, load balance, and a preview across four life lenses \u2014 yours to keep.' },
+                  { n: '04', title: 'Optionally unlock deeper lenses', desc: 'Personal, Student, Professional, Family lenses unlock contextualized AI narratives. $30 each, or all four as the Cosmic Bundle for $99.99.' },
+                ].map((s, i) => (
+                  <li key={i} className="flex gap-3 sm:gap-5 items-start">
+                    <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white font-bold flex items-center justify-center text-sm sm:text-base">
+                      {s.n}
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-gray-900 mb-1">{s.title}</h3>
+                      <p className="text-sm text-gray-600 leading-relaxed">{s.desc}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </section>
+
+          {/* ── CLOSING CTA ── */}
+          <section className="bg-gradient-to-br from-indigo-50 to-purple-50 py-10 sm:py-12 px-4 sm:px-6">
+            <div className="max-w-3xl mx-auto text-center">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-indigo-900 mb-4">
+                Ready to map your galaxy?
+              </h2>
+              <p className="text-gray-600 mb-6 sm:mb-8 text-sm sm:text-base">
+                The free ScoreCard is yours forever &mdash; no credit card required.
+              </p>
+              <button
+                onClick={handleStartAssessment}
+                className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl text-base sm:text-lg shadow-lg hover:shadow-xl transition-all"
+              >
+                Begin Free Assessment
+              </button>
+              <p className="text-xs text-gray-500 mt-6 italic">
+                Educational insights only. Not medical or mental health advice.
+              </p>
+            </div>
+          </section>
         </>
+      )}
+
+      {/* ── DASHBOARD (logged-in home / start-assessment screen) ── */}
+      {currentView === 'dashboard' && !loadingReport && (
+        <>
+          {/* Top bar */}
+          <div className="bg-white/80 backdrop-blur border-b border-gray-200 sticky top-0 z-30">
+            <div className="max-w-7xl mx-auto px-3 sm:px-6 py-3 flex justify-between items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] sm:text-xs text-gray-500 leading-tight">Signed in as</p>
+                <p className="text-xs sm:text-sm font-semibold text-indigo-900 leading-tight truncate">
+                  {user?.name || user?.email || 'Guest'}
+                </p>
+              </div>
+              <div className="flex gap-1 sm:gap-2 shrink-0">
+                <button
+                  onClick={handleViewReports}
+                  className="text-xs sm:text-sm text-indigo-700 hover:text-indigo-900 font-semibold px-2 sm:px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors whitespace-nowrap"
+                >
+                  My Reports
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="text-xs sm:text-sm text-gray-600 hover:text-gray-800 font-medium px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-8">
+            {/* Greeting */}
+            <header className="mb-6">
+              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-1">
+                Your Cockpit
+              </p>
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 leading-tight">
+                Welcome back{user?.name ? `, ${String(user.name).split(' ')[0]}` : ''}.
+              </h1>
+              <p className="text-sm text-gray-600 mt-1 max-w-2xl">
+                Start a new assessment or browse the lens reports you&rsquo;ve unlocked.
+              </p>
+            </header>
+
+            {/* Primary action card — Begin / Continue assessment */}
+            <section className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-700 via-purple-700 to-indigo-900 text-white shadow-xl mb-6">
+              <div
+                aria-hidden="true"
+                className="absolute -top-20 -right-20 w-72 h-72 bg-amber-400/15 rounded-full blur-3xl pointer-events-none"
+              />
+              <div className="relative p-5 md:p-7 grid md:grid-cols-[1fr_auto] gap-5 md:items-center">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-amber-300 mb-1.5">
+                    Free &middot; 10&ndash;15 minutes
+                  </p>
+                  <h2 className="text-xl md:text-2xl font-bold mb-2 leading-tight">
+                    Take the BEST Galaxy&trade; Assessment
+                  </h2>
+                  <p className="text-sm text-indigo-100/90 leading-relaxed max-w-xl">
+                    Your free ScoreCard includes your Galaxy archetype, 13-subdomain
+                    constellation, BHP &times; PEI load balance, and a preview across all
+                    four life lenses.
+                  </p>
+                </div>
+                <div className="flex flex-col items-stretch md:items-end gap-3">
+                  <button
+                    onClick={handleStartAssessment}
+                    className="px-6 py-3 bg-white text-indigo-900 font-bold rounded-xl text-base shadow-2xl hover:shadow-amber-500/30 hover:-translate-y-0.5 transition-all whitespace-nowrap"
+                  >
+                    Begin Assessment &rarr;
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* Secondary actions grid */}
+            <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <button
+                onClick={handleViewReports}
+                className="text-left bg-white border border-gray-200 rounded-2xl p-5 hover:border-indigo-300 hover:shadow-md transition-all"
+              >
+                <div className="text-2xl mb-2" aria-hidden="true">{'\u{1F4CA}'}</div>
+                <h3 className="font-semibold text-gray-900 mb-1">My Reports</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  Open your assessment history, download PDFs, and check which lenses
+                  you&rsquo;ve unlocked.
+                </p>
+              </button>
+
+              <button
+                onClick={() => pushView('terms-of-use')}
+                className="text-left bg-white border border-gray-200 rounded-2xl p-5 hover:border-indigo-300 hover:shadow-md transition-all"
+              >
+                <div className="text-2xl mb-2" aria-hidden="true">{'\u{1F4DC}'}</div>
+                <h3 className="font-semibold text-gray-900 mb-1">Terms &amp; Privacy</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  Read the Terms of Use, Privacy Policy, and Data Use disclosure.
+                </p>
+              </button>
+
+              <button
+                onClick={() => pushView('account')}
+                className="text-left bg-white border border-gray-200 rounded-2xl p-5 hover:border-indigo-300 hover:shadow-md transition-all"
+              >
+                <div className="text-2xl mb-2" aria-hidden="true">{'\u{1F511}'}</div>
+                <h3 className="font-semibold text-gray-900 mb-1">Account</h3>
+                <p className="text-sm text-gray-600 leading-relaxed break-all">
+                  {user?.email || '\u2014'}
+                </p>
+                <span className="inline-block text-xs font-semibold text-indigo-600 mt-2">
+                  Manage name &amp; password &rarr;
+                </span>
+              </button>
+            </section>
+
+            {/* Pricing reminder */}
+            <section className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-5 sm:p-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <h3 className="font-semibold text-indigo-900 mb-1">Unlock deeper lenses</h3>
+                  <p className="text-sm text-gray-600 max-w-2xl">
+                    After your free ScoreCard, contextualized AI narratives across
+                    Personal, Student, Professional, and Family lenses are available
+                    individually for <strong>$30</strong>, or all four together as the
+                    Cosmic Bundle for <strong>$99.99</strong>.
+                  </p>
+                </div>
+                <span className="text-xs text-gray-500 italic">
+                  Educational insights only.
+                </span>
+              </div>
+            </section>
+          </main>
+        </>
+      )}
+
+      {currentView === 'account' && user && (
+        <Account
+          user={user}
+          onUpdated={handleAccountUpdated}
+          onBack={() => pushView('dashboard')}
+        />
+      )}
+
+      {currentView === 'consent' && (
+        <ConsentGate
+          user={user}
+          onAgree={handleConsentAgree}
+          onCancel={() => pushView(user ? 'dashboard' : 'welcome')}
+          onNavigate={(path) => {
+            const parsed = parseUrl(path);
+            pushView(parsed.view);
+          }}
+        />
+      )}
+
+      {(currentView === 'terms-of-use'
+        || currentView === 'privacy-policy'
+        || currentView === 'data-use') && (
+        <LegalPage
+          slug={currentView}
+          onBack={() => pushView(user ? 'dashboard' : 'welcome')}
+        />
       )}
 
       {currentView === 'demographics' && (
@@ -620,26 +999,11 @@ function App() {
       )}
 
       {currentView === 'my-reports' && (
-        <>
-          <MyReports
-            userEmail={user?.email}
-            onViewReport={handleViewReport}
-            onBack={() => pushView('welcome')}
-          />
-          {loadingReport && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-2xl p-8 shadow-2xl max-w-md mx-4">
-                <div className="flex flex-col items-center">
-                  <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mb-4"></div>
-                  <h3 className="text-xl font-bold text-gray-800 mb-2">Loading Your Report</h3>
-                  <p className="text-gray-600 text-center">
-                    Please wait while we retrieve your assessment data...
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
+        <MyReports
+          userEmail={user?.email}
+          onViewReport={handleViewReport}
+          onBack={() => pushView(user ? 'dashboard' : 'welcome')}
+        />
       )}
 
       {currentView === 'ai-reports' && (
@@ -671,6 +1035,34 @@ function App() {
             paidProducts={paidProducts}
             onViewReports={() => pushView('ai-reports')}
           />
+        </div>
+      )}
+
+      {/* Persistent legal footer on every page (skipped during loading
+          since the loading overlay covers the screen). */}
+      {!loadingReport && (
+        <LegalFooter
+          onNavigate={(path) => {
+            const parsed = parseUrl(path);
+            pushView(parsed.view);
+          }}
+        />
+      )}
+
+      {/* Global loading overlay — top-level so it covers every view
+          (welcome, my-reports, results-in-flight, etc.) and the welcome
+          page never flashes underneath while a fetch is in progress. */}
+      {loadingReport && (
+        <div className="fixed inset-0 bg-white flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md mx-4">
+            <div className="flex flex-col items-center">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mb-4"></div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">Loading Your Report</h3>
+              <p className="text-gray-600 text-center">
+                Please wait while we retrieve your assessment data...
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>

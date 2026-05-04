@@ -1,5 +1,7 @@
 import React from 'react';
 import LockedSections from './LockedSections';
+import { ShortDisclaimer, FullLegalDisclaimer } from '../legal/Disclaimer';
+import { PAYMENT_ACK } from '../legal/legalText';
 
 // 🔷 1 & 2: Domain plain-language tags + consistent color system
 const DOMAIN_META = {
@@ -392,11 +394,11 @@ const ScoreCard = ({
       <div className="bg-white rounded-2xl shadow-md overflow-hidden">
         <button
           onClick={() => toggleSection(id)}
-          className="w-full flex items-center justify-between p-6 text-left hover:bg-gray-50 transition-colors"
+          className="w-full flex items-center justify-between p-4 sm:p-6 text-left hover:bg-gray-50 transition-colors gap-3"
         >
-          <div className="flex items-center space-x-3">
-            {icon && <span className="text-xl">{icon}</span>}
-            <h2 className="text-xl font-bold text-gray-800">{title}</h2>
+          <div className="flex items-center space-x-3 min-w-0">
+            {icon && <span className="text-lg sm:text-xl shrink-0">{icon}</span>}
+            <h2 className="text-base sm:text-xl font-bold text-gray-800 break-words">{title}</h2>
           </div>
           <span className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>
             ▼
@@ -408,30 +410,39 @@ const ScoreCard = ({
   };
 
   return (
-    <div className="min-h-screen p-4 py-8">
-      <div className="max-w-3xl mx-auto space-y-6">
+    <div className="min-h-screen px-3 py-6 sm:p-4 sm:py-8">
+      <div className="max-w-3xl mx-auto space-y-5 sm:space-y-6">
+
+        {/* ── 0. TOP-OF-REPORT SHORT DISCLAIMER ──
+            Required by docs/Legal Terms & Conditions.md §4 — every report
+            view must show the "Important Notice" Short Disclaimer at the top.
+        */}
+        <ShortDisclaimer />
 
         {/* ── 1. GALAXY SNAPSHOT HEADER ── */}
-        <div className="bg-gradient-to-br from-indigo-700 via-purple-700 to-indigo-900 rounded-2xl shadow-xl p-8 text-white text-center">
+        <div className="bg-gradient-to-br from-indigo-700 via-purple-700 to-indigo-900 rounded-2xl shadow-xl p-5 sm:p-8 text-white text-center">
           {isPaid && (
             <span className="inline-block bg-yellow-400 text-yellow-900 text-xs font-bold px-3 py-1 rounded-full mb-3 uppercase tracking-wider">
               Full Galaxy Report
             </span>
           )}
-          <p className="text-indigo-200 text-sm uppercase tracking-widest mb-2">You are</p>
-          <h1 className="text-4xl font-extrabold mb-3">
+          <p className="text-indigo-200 text-xs sm:text-sm uppercase tracking-widest mb-2">You are</p>
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold mb-3 break-words">
             {galaxy_snapshot?.archetype_name || 'Unknown'}
           </h1>
-          <p className="text-lg text-indigo-100 italic mb-4">
+          <p className="text-base sm:text-lg text-indigo-100 italic mb-4">
             "{galaxy_snapshot?.tagline}"
           </p>
-          <p className="text-indigo-200 text-sm mt-2">
+          <p className="text-indigo-200 text-xs sm:text-sm mt-2">
             This profile reflects how your internal capacity (BHP) is interacting with your environmental demands (PEI).
+          </p>
+          <p className="mt-4 text-xs text-indigo-200/80 italic border-t border-indigo-400/30 pt-3">
+            Educational insights only. Not medical or mental health advice.
           </p>
         </div>
 
         {/* ── 2. EF CONSTELLATION SCORECARD ── */}
-        <div className="bg-white rounded-2xl shadow-md p-6">
+        <div className="bg-white rounded-2xl shadow-md p-4 sm:p-6">
           <h2 className="text-xl font-bold text-gray-800 mb-5">
             Your Executive Function Constellation
           </h2>
@@ -512,7 +523,7 @@ const ScoreCard = ({
           const pressureLevel = absDelta < 0.01 ? 'None' : absDelta < 0.05 ? 'Mild' : absDelta < 0.12 ? 'Moderate' : 'High';
 
           return (
-            <div className="bg-white rounded-2xl p-7 border border-gray-200" style={{ boxShadow: '0 8px 24px rgba(31, 41, 55, 0.08)', maxWidth: '920px', margin: '0 auto' }}>
+            <div className="bg-white rounded-2xl p-4 sm:p-7 border border-gray-200" style={{ boxShadow: '0 8px 24px rgba(31, 41, 55, 0.08)', maxWidth: '920px', margin: '0 auto' }}>
               {/* Header Row */}
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
@@ -624,7 +635,7 @@ const ScoreCard = ({
 
         {/* ── 4. STRENGTHS + KEY PRESSURES + GROWTH EDGES ── */}
         <div className={`grid grid-cols-1 gap-4 ${constellation?.some(g => isEnvironmentalDomain(g.name) && g.percentage >= 60) ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
-          <div className="bg-white rounded-2xl shadow-md p-6">
+          <div className="bg-white rounded-2xl shadow-md p-4 sm:p-6">
             <h3 className="font-bold text-green-700 mb-3">✓ Top Strengths</h3>
             <ul className="space-y-2">
               {strengths?.filter(s => !isEnvironmentalDomain(s)).map((s, i) => (
@@ -634,7 +645,7 @@ const ScoreCard = ({
           </div>
           {/* Key Pressures — Environmental Demands separated out */}
           {constellation?.some(g => isEnvironmentalDomain(g.name) && g.percentage >= 60) && (
-            <div className="bg-red-50 rounded-2xl shadow-md p-6 border border-red-200">
+            <div className="bg-red-50 rounded-2xl shadow-md p-4 sm:p-6 border border-red-200">
               <h3 className="font-bold text-red-700 mb-3">⚠ Key Pressures on Your System</h3>
               <ul className="space-y-2">
                 {constellation?.filter(g => isEnvironmentalDomain(g.name)).map((g, i) => (
@@ -646,7 +657,7 @@ const ScoreCard = ({
               <p className="text-xs text-red-500 mt-2">This represents external pressure, not internal capacity.</p>
             </div>
           )}
-          <div className="bg-white rounded-2xl shadow-md p-6">
+          <div className="bg-white rounded-2xl shadow-md p-4 sm:p-6">
             <h3 className="font-bold text-orange-600 mb-3">⚡ Growth Edges</h3>
             <ul className="space-y-2">
               {growth_edges?.map((e, i) => (
@@ -804,6 +815,11 @@ const ScoreCard = ({
                 );
               })}
             </div>
+            {!isPaid && (
+              <p className="text-xs text-gray-500 italic text-center mt-3">
+                {PAYMENT_ACK}
+              </p>
+            )}
           </div>
         )}
 
@@ -918,7 +934,7 @@ const ScoreCard = ({
                     </div>
 
                     {/* Score + BHP/PEI/LB Row */}
-                    <div className="grid grid-cols-4 gap-3 mb-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                       <div className="bg-white rounded-lg p-3 text-center shadow-sm">
                         <div className="text-xs text-gray-500">Domain Score</div>
                         <div className="text-2xl font-bold" style={{ color: accentColor }}>{scorePercent.toFixed(0)}</div>
@@ -1116,7 +1132,7 @@ const ScoreCard = ({
 
         {/* ── PAID: Cosmic Summary ── */}
         {isPaid && interpretation?.cosmic_summary && (
-          <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl shadow-md p-6 border border-indigo-100">
+          <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 rounded-2xl shadow-md p-4 sm:p-6 border border-indigo-100">
             <h2 className="text-xl font-bold text-indigo-800 mb-4">Cosmic Summary</h2>
             <p className="text-gray-700 leading-relaxed italic">
               {interpretation.cosmic_summary}
@@ -1130,7 +1146,7 @@ const ScoreCard = ({
             unlocked vs locked, and shows the same upsell buttons.
         */}
         {!hasAnyUnlock && lens_teasers && (
-          <div className="bg-white rounded-2xl shadow-md p-6">
+          <div className="bg-white rounded-2xl shadow-md p-4 sm:p-6">
             <h2 className="text-xl font-bold text-gray-800 mb-5">
               Your Profile Across 4 Lenses
             </h2>
@@ -1163,6 +1179,9 @@ const ScoreCard = ({
                 );
               })}
             </div>
+            <p className="text-xs text-gray-500 italic text-center mt-4">
+              {PAYMENT_ACK}
+            </p>
           </div>
         )}
 
@@ -1184,7 +1203,7 @@ const ScoreCard = ({
             unlocked, so a $30 single-lens buyer can still download
             their lens's Data Report from this picker.
         */}
-        <div className="bg-white rounded-2xl shadow-md p-6">
+        <div className="bg-white rounded-2xl shadow-md p-4 sm:p-6">
           {hasAnyUnlock && (
             <>
               <h2 className="text-xl font-bold text-gray-800 mb-2 text-center">Select Your Data Report Lens</h2>
@@ -1261,6 +1280,9 @@ const ScoreCard = ({
                   );
                 })}
               </div>
+              <p className="text-xs text-gray-500 italic text-center -mt-2 mb-4">
+                {PAYMENT_ACK}
+              </p>
               <div className="border-t border-gray-200 pt-5" />
             </>
           )}
@@ -1367,7 +1389,7 @@ const ScoreCard = ({
         </div>
 
         {/* ── FOOTER ── */}
-        <div className="text-center pt-4 pb-8">
+        <div className="text-center pt-4 pb-4">
           <button
             onClick={onRestart}
             className="text-gray-500 hover:text-gray-700 text-sm underline transition-colors"
@@ -1375,6 +1397,9 @@ const ScoreCard = ({
             Take Assessment Again
           </button>
         </div>
+
+        {/* ── LEGAL & MEDICAL DISCLAIMER ── */}
+        <FullLegalDisclaimer className="mb-8" />
 
       </div>
     </div>

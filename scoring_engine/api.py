@@ -350,8 +350,17 @@ def create_app(use_database: bool = False) -> FastAPI:
             # Genuine creation failure (DB unreachable, validation, etc.).
             raise HTTPException(status_code=500, detail="Failed to create account. Please try again.")
 
+        # Send email confirmation
+        try:
+            from scoring_engine.auth_service import generate_confirm_token
+            from scoring_engine.email_service import send_confirmation_email
+            token = generate_confirm_token(email)
+            send_confirmation_email(email, user.get('name', ''), token)
+        except Exception as mail_err:
+            logger.warning("Confirmation email failed for %s: %s", email, mail_err)
+
         logger.info("New user signed up: %s", email)
-        return {"success": True, "user": user}
+        return {"success": True, "user": user, "email_confirmation_sent": True}
 
     @app.post("/api/v1/auth/login")
     def login(request: dict):
@@ -368,6 +377,17 @@ def create_app(use_database: bool = False) -> FastAPI:
 
         if not user:
             raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        # Block login until the user has confirmed their email address.
+        if not user.get('email_confirmed'):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "email_not_confirmed",
+                    "message": "Please confirm your email address before logging in. Check your inbox for the confirmation link.",
+                    "email": email,
+                },
+            )
 
         # Always try to pull the latest full intake record from
         # `demographic_intakes`.  That table is written by the 16-question
@@ -389,6 +409,89 @@ def create_app(use_database: bool = False) -> FastAPI:
 
         logger.info("User logged in: %s", email)
         return {"success": True, "user": user}
+
+    @app.put("/api/v1/auth/user/name")
+    def update_account_name(request: dict):
+        """Rename the signed-in account.
+
+        Body: { "email": "<account email>", "name": "<new display name>" }
+
+        Returns the refreshed user object (without the password hash) so the
+        frontend can update its local cache atomically.
+        """
+        from scoring_engine.auth_service import (
+            update_user_name,
+            normalize_email,
+        )
+
+        email = normalize_email(request.get('email'))
+        new_name = request.get('name')
+        if not email:
+            raise HTTPException(status_code=400, detail="email is required")
+
+        try:
+            updated = update_user_name(email, new_name)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+
+        if not updated:
+            raise HTTPException(status_code=404, detail="Account not found")
+
+        # Re-merge demographics so the response shape matches /login & get_user.
+        if db_available:
+            try:
+                from scoring_engine.demographics import get_demographics
+                intake = get_demographics(email)
+                if intake is not None:
+                    merged = {**(updated.get('demographics') or {}), **intake}
+                    updated['demographics'] = merged
+                    updated['has_completed_demographics'] = True
+            except Exception as _e:
+                logger.debug("name-update demographic merge failed: %s", _e)
+
+        logger.info("User renamed: %s", email)
+        return {"success": True, "user": updated}
+
+    @app.post("/api/v1/auth/change-password")
+    def change_account_password(request: dict):
+        """Change the signed-in account's password.
+
+        Body: {
+          "email": "<account email>",
+          "current_password": "<existing pw>",
+          "new_password": "<new pw, min 6 chars>"
+        }
+
+        Returns 401 if `current_password` is wrong, 400 on weak/empty new
+        password, 404 if the email doesn't resolve to an account.
+        """
+        from scoring_engine.auth_service import (
+            change_password,
+            normalize_email,
+            InvalidPasswordError,
+            UserNotFoundError,
+        )
+
+        email = normalize_email(request.get('email'))
+        current_password = request.get('current_password')
+        new_password = request.get('new_password')
+        if not email:
+            raise HTTPException(status_code=400, detail="email is required")
+
+        try:
+            ok = change_password(email, current_password or "", new_password or "")
+        except InvalidPasswordError:
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
+        except UserNotFoundError:
+            raise HTTPException(status_code=404, detail="Account not found")
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to change password")
+
+        logger.info("Password changed for: %s", email)
+        return {"success": True}
 
     @app.get("/api/v1/auth/user/{email}")
     def get_user(email: str):
@@ -414,6 +517,115 @@ def create_app(use_database: bool = False) -> FastAPI:
                 logger.debug("Could not fetch demographics for get_user merge: %s", _e)
 
         return {"success": True, "user": user}
+
+    # -----------------------------------------------------------------
+    # Email Confirmation & Password Reset Endpoints
+    # -----------------------------------------------------------------
+
+    @app.post("/api/v1/auth/confirm-email")
+    def confirm_email(request: dict):
+        """Verify the email-confirmation token and mark the account confirmed.
+
+        Body: { "token": "<base64 token from email link>" }
+        """
+        from scoring_engine.auth_service import verify_confirm_token, confirm_user_email
+
+        token = request.get('token')
+        if not token:
+            raise HTTPException(status_code=400, detail="Token is required")
+
+        email = verify_confirm_token(token)
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid or expired confirmation link. Please request a new one.")
+
+        ok = confirm_user_email(email)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to confirm email. Please try again.")
+
+        logger.info("Email confirmed: %s", email)
+        return {"success": True, "email": email}
+
+    @app.post("/api/v1/auth/resend-confirmation")
+    def resend_confirmation(request: dict):
+        """Re-send the email confirmation link.
+
+        Body: { "email": "<user email>" }
+        """
+        from scoring_engine.auth_service import (
+            normalize_email, get_user_by_email, generate_confirm_token,
+            is_email_confirmed,
+        )
+        from scoring_engine.email_service import send_confirmation_email
+
+        email = normalize_email(request.get('email'))
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+
+        # Always return success to avoid leaking whether an account exists.
+        user = get_user_by_email(email)
+        if user and not is_email_confirmed(email):
+            try:
+                token = generate_confirm_token(email)
+                send_confirmation_email(email, user.get('name', ''), token)
+            except Exception as e:
+                logger.warning("Resend confirmation failed for %s: %s", email, e)
+
+        return {"success": True, "message": "If an account exists, a confirmation email has been sent."}
+
+    @app.post("/api/v1/auth/forgot-password")
+    def forgot_password(request: dict):
+        """Send a password-reset email.
+
+        Body: { "email": "<user email>" }
+        Always returns success (prevents email enumeration).
+        """
+        from scoring_engine.auth_service import (
+            normalize_email, get_user_by_email, generate_reset_token,
+        )
+        from scoring_engine.email_service import send_password_reset_email
+
+        email = normalize_email(request.get('email'))
+        if not email:
+            raise HTTPException(status_code=400, detail="Email is required")
+
+        user = get_user_by_email(email)
+        if user:
+            try:
+                token = generate_reset_token(email)
+                send_password_reset_email(email, user.get('name', ''), token)
+                logger.info("Password reset email sent to %s", email)
+            except Exception as e:
+                logger.warning("Reset email failed for %s: %s", email, e)
+
+        # Always success — don't reveal whether an account exists
+        return {"success": True, "message": "If an account exists, a password reset email has been sent."}
+
+    @app.post("/api/v1/auth/reset-password")
+    def reset_password(request: dict):
+        """Reset the password using a token from the email link.
+
+        Body: { "token": "<base64 token>", "new_password": "<new pw, min 6 chars>" }
+        """
+        from scoring_engine.auth_service import reset_password_with_token, verify_reset_token
+
+        token = request.get('token')
+        new_password = request.get('new_password')
+        if not token:
+            raise HTTPException(status_code=400, detail="Token is required")
+        if not new_password or len(new_password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+        # Peek at the email for logging before consuming the token
+        email = verify_reset_token(token)
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link. Please request a new one.")
+
+        ok = reset_password_with_token(token, new_password)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to reset password. Please try again.")
+
+        logger.info("Password reset completed for: %s", email)
+        return {"success": True}
 
     # -----------------------------------------------------------------
     # Payment Endpoints (Phase 2)
@@ -741,8 +953,30 @@ def create_app(use_database: bool = False) -> FastAPI:
             require_any_paid(result_id, LENS_PRODUCTS + ("COSMIC_BUNDLE",))
         
         logger.info(f"Generating Full Report PDF for result_id: {result_id}, report_type: {report_type} (original: {original_report_type})")
+
+        # Pull the lens-specific AI narrative if one has been generated for
+        # this assessment. Without this overlay every lens PDF reuses the
+        # lens-neutral baseline `interpretation` and looks the same.
+        lens_sections = None
+        if report_type and report_type != "FULL_GALAXY":
+            try:
+                from scoring_engine.report_generator import get_user_lens_reports
+                user_id = (
+                    result_data.get("metadata", {}).get("user_email")
+                    or result_data.get("metadata", {}).get("user_id")
+                )
+                if user_id:
+                    all_lens = get_user_lens_reports(user_id, result_id)
+                    lens_sections = all_lens.get(report_type)
+                    if lens_sections:
+                        logger.info(f"Overlaying lens-specific narrative for {report_type} ({len(lens_sections)} sections)")
+                    else:
+                        logger.info(f"No lens-specific narrative stored for {report_type}; using baseline interpretation")
+            except Exception as e:
+                logger.warning(f"Lens narrative lookup failed for {report_type}: {e}")
+
         try:
-            pdf_bytes = generate_pdf_report(result_data, lens_override=lens)
+            pdf_bytes = generate_pdf_report(result_data, lens_override=lens, lens_sections=lens_sections)
             if pdf_bytes:
                 logger.info(f"Full Report PDF generated: {len(pdf_bytes)} bytes")
             else:
@@ -828,6 +1062,79 @@ def create_app(use_database: bool = False) -> FastAPI:
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
+
+    # -----------------------------------------------------------------
+    # Legal Consent Endpoint
+    # -----------------------------------------------------------------
+
+    @app.post("/api/v1/consent")
+    def record_consent(request: dict):
+        """Record a user's pre-assessment legal consent.
+
+        Stores an audit row with: user_id, the legal version they
+        acknowledged, which checkboxes they ticked, IP/user-agent (when
+        available), and a server-side timestamp.  Used as evidence that
+        the user agreed to the Terms / Disclaimer / Data-Use clauses
+        before starting the assessment.
+
+        Body:
+          - user_id: optional (email or id; null for anonymous gating)
+          - legal_version: required (e.g. "2026-04-30")
+          - consents: required dict (e.g. {"terms": true, "responsibility": true,
+            "research": false})
+          - user_agent: optional
+        """
+        from datetime import datetime, timezone
+
+        legal_version = request.get("legal_version")
+        consents = request.get("consents") or {}
+        if not legal_version or not isinstance(consents, dict):
+            raise HTTPException(
+                status_code=400,
+                detail="legal_version and consents are required",
+            )
+
+        # Required-checkbox enforcement at the API boundary.  The frontend
+        # also blocks submission, but a malicious client could bypass that.
+        if not (consents.get("terms") and consents.get("responsibility")):
+            raise HTTPException(
+                status_code=400,
+                detail="Required consents (terms, responsibility) must be true",
+            )
+
+        record = {
+            "user_id": request.get("user_id"),
+            "legal_version": legal_version,
+            "consents": consents,
+            "user_agent": request.get("user_agent"),
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Persist if Supabase is available; otherwise just log so the
+        # consent is at least captured in container logs.
+        record_id = None
+        if db_available:
+            try:
+                from scoring_engine.supabase_client import get_supabase_client
+                client = get_supabase_client()
+                if client is not None:
+                    res = (
+                        client.table("legal_consents")
+                        .insert(record)
+                        .execute()
+                    )
+                    if res.data:
+                        record_id = res.data[0].get("id")
+            except Exception as e:
+                # Don't bubble up — the user has already provided consent
+                # client-side and shouldn't be blocked by a logging hiccup.
+                logger.warning("Consent log DB write failed: %s", e)
+
+        logger.info(
+            "Consent recorded: user=%s version=%s consents=%s",
+            record.get("user_id"), legal_version, consents,
+        )
+        return {"success": True, "record_id": record_id, "recorded_at": record["recorded_at"]}
 
     # -----------------------------------------------------------------
     # Demographics Intake Endpoints

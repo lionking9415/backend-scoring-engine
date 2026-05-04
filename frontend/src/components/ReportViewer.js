@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import UnlockGate from './UnlockGate';
+import { ShortDisclaimer, FullLegalDisclaimer } from '../legal/Disclaimer';
 
 // The four lens reports that must exist before Cosmic Integration synthesis
 // is allowed. Mirrors `check_cosmic_eligibility` in scoring_engine/report_generator.py.
@@ -368,11 +369,15 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
   const lensInfo = LENS_LABELS[activeReport] || {};
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
+    <div className="max-w-4xl mx-auto px-3 py-4 sm:p-4">
+      {/* TOP-OF-REPORT SHORT DISCLAIMER — required by
+          docs/Legal Terms & Conditions.md §4 */}
+      <ShortDisclaimer className="mb-4" />
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-indigo-900">AI Narrative Reports</h1>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-indigo-900">AI Narrative Reports</h1>
           <p className="text-sm text-gray-500 mt-1">
             15-section AI-written interpretations of your assessment — one per lens.
           </p>
@@ -384,7 +389,7 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
         {onBack && (
           <button
             onClick={onBack}
-            className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold whitespace-nowrap ml-4"
+            className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold whitespace-nowrap self-start sm:ml-4 sm:shrink-0"
           >
             ← Back to Dashboard
           </button>
@@ -627,6 +632,10 @@ const ReportViewer = ({ assessmentId, userEmail, paidProducts: paidProductsProp 
           </div>
         )
       )}
+
+      {/* END-OF-REPORT FULL LEGAL DISCLAIMER — required by
+          docs/Legal Terms & Conditions.md §4 */}
+      <FullLegalDisclaimer className="mt-10" />
     </div>
   );
 };

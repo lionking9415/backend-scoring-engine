@@ -129,16 +129,32 @@ def get_paid_products(assessment_id: str) -> list[str]:
        no explicit per-SKU data exists. Expanded to ALL SKUs for
        backwards compatibility with rows that pre-date the
        ``paid_products`` column migration.
+
+    Bundle-equivalence rule:
+       Buying all 4 lens SKUs individually ($30 × 4 = $120) is treated as
+       equivalent to purchasing the Cosmic Bundle ($99.99). When every
+       lens in ``LENS_PRODUCTS`` is present, ``COSMIC_BUNDLE`` is added
+       to the returned list synthetically so every downstream consumer
+       (paywall, Cosmic Dashboard, Full Galaxy PDF, frontend gating)
+       grants the same access a bundle buyer would receive.
     """
     rec = _fetch_assessment_payment_record(assessment_id)
 
+    products: list[str]
     if rec["paid_products"]:
-        return rec["paid_products"]
+        products = list(rec["paid_products"])
+    elif rec["payment_status"] == "paid":
+        products = list(ALL_PRODUCTS)
+    else:
+        return []
 
-    if rec["payment_status"] == "paid":
-        return list(ALL_PRODUCTS)
+    if (
+        "COSMIC_BUNDLE" not in products
+        and set(LENS_PRODUCTS).issubset(products)
+    ):
+        products.append("COSMIC_BUNDLE")
 
-    return []
+    return products
 
 
 def is_product_paid(assessment_id: str, product: str) -> bool:

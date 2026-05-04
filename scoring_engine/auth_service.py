@@ -3,15 +3,30 @@ Authentication Service Module
 Handles user registration, login, and session management with Supabase backend.
 """
 
+import base64
+import hmac
 import logging
 import hashlib
+import os
 import re
 import secrets
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 logger = logging.getLogger(__name__)
+
+# Secret used to sign confirmation / reset tokens.  Falls back to a random
+# value so the server always starts, but tokens won't survive restarts.
+_TOKEN_SECRET = os.getenv("TOKEN_SECRET", secrets.token_hex(32))
+
+# Token lifetimes
+EMAIL_CONFIRM_HOURS = 24
+PASSWORD_RESET_HOURS = 1
 
 
 class DuplicateEmailError(Exception):
@@ -216,6 +231,7 @@ def authenticate_user(email: str, password: str) -> Optional[dict]:
             'name': user['name'],
             'demographics': user['demographics'],
             'session_token': session_token,
+            'email_confirmed': bool(user.get('email_confirmed')),
         }
 
     except Exception as e:
@@ -252,6 +268,125 @@ def get_user_by_email(email: str) -> Optional[dict]:
         return None
 
 
+class InvalidPasswordError(Exception):
+    """Raised when the supplied current password is wrong on a change attempt."""
+
+
+class UserNotFoundError(Exception):
+    """Raised when an account-management op targets a missing account."""
+
+
+def update_user_name(email: str, new_name: str) -> Optional[dict]:
+    """Update the display name of an existing account.
+
+    Args:
+        email: account email (will be normalized)
+        new_name: trimmed display name; rejected if empty after stripping
+
+    Returns:
+        The updated user row (id, email, name, demographics) on success, or
+        None if the account isn't found / DB unavailable.
+
+    Raises:
+        ValueError on validation failure (so the API layer can return 400).
+    """
+    normalized = normalize_email(email)
+    if not normalized:
+        raise ValueError("email is required")
+
+    cleaned = (new_name or "").strip()
+    if not cleaned:
+        raise ValueError("name cannot be empty")
+    # Sanity cap so we don't accept multi-MB strings that would break UI tables.
+    if len(cleaned) > 120:
+        raise ValueError("name is too long (max 120 characters)")
+
+    try:
+        from scoring_engine.supabase_client import get_supabase_client
+
+        supabase = get_supabase_client()
+        if not supabase:
+            logger.error("Supabase not available")
+            return None
+
+        result = (
+            supabase.table('users')
+            .update({'name': cleaned})
+            .ilike('email', normalized)
+            .execute()
+        )
+        rows = result.data or []
+        if not rows:
+            return None
+        row = rows[0]
+        return {
+            'id': row['id'],
+            'email': row['email'],
+            'name': row['name'],
+            'demographics': row.get('demographics') or {},
+        }
+    except Exception as e:
+        logger.error("Error updating user name: %s", e, exc_info=True)
+        return None
+
+
+def change_password(email: str, current_password: str, new_password: str) -> bool:
+    """Verify the current password and replace it with a new hash.
+
+    Returns True on success.
+
+    Raises:
+        UserNotFoundError if the account doesn't exist.
+        InvalidPasswordError if `current_password` doesn't match.
+        ValueError on weak/empty new password.
+    """
+    normalized = normalize_email(email)
+    if not normalized:
+        raise UserNotFoundError(email or "")
+
+    if not new_password or len(new_password) < 6:
+        raise ValueError("new password must be at least 6 characters")
+    if current_password and current_password == new_password:
+        raise ValueError("new password must differ from the current one")
+
+    try:
+        from scoring_engine.supabase_client import get_supabase_client
+
+        supabase = get_supabase_client()
+        if not supabase:
+            logger.error("Supabase not available")
+            return False
+
+        result = (
+            supabase.table('users')
+            .select('id, email, password_hash')
+            .ilike('email', normalized)
+            .limit(1)
+            .execute()
+        )
+        rows = result.data or []
+        if not rows:
+            raise UserNotFoundError(normalized)
+
+        user = rows[0]
+        if not verify_password(current_password or "", user['password_hash']):
+            raise InvalidPasswordError(normalized)
+
+        new_hash = hash_password(new_password)
+        update = (
+            supabase.table('users')
+            .update({'password_hash': new_hash})
+            .eq('id', user['id'])
+            .execute()
+        )
+        return bool(update.data)
+    except (InvalidPasswordError, UserNotFoundError, ValueError):
+        raise
+    except Exception as e:
+        logger.error("Error changing password: %s", e, exc_info=True)
+        return False
+
+
 def update_user_demographics(email: str, demographics: dict) -> bool:
     """Update a user's demographic information (case-insensitive lookup)."""
     normalized = normalize_email(email)
@@ -276,4 +411,158 @@ def update_user_demographics(email: str, demographics: dict) -> bool:
 
     except Exception as e:
         logger.error("Error updating user demographics: %s", e)
+        return False
+
+
+# ─── Token Generation / Verification ─────────────────────────────────────────
+
+def _sign_token(payload: str) -> str:
+    """HMAC-SHA256 sign a payload string."""
+    return hmac.new(
+        _TOKEN_SECRET.encode(),
+        payload.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def generate_confirm_token(email: str) -> str:
+    """Create a signed email-confirmation token.
+
+    Format: <email>|<expiry_iso>|<signature>
+    """
+    normalized = normalize_email(email) or email
+    expiry = (datetime.now(timezone.utc) + timedelta(hours=EMAIL_CONFIRM_HOURS)).isoformat()
+    payload = f"{normalized}|{expiry}"
+    sig = _sign_token(payload)
+    return base64.urlsafe_b64encode(f"{payload}|{sig}".encode()).decode()
+
+
+def verify_confirm_token(token: str) -> Optional[str]:
+    """Verify an email-confirmation token. Returns the email or None."""
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode()).decode()
+        parts = decoded.split('|')
+        if len(parts) != 3:
+            return None
+        email, expiry_str, sig = parts
+        expected = _sign_token(f"{email}|{expiry_str}")
+        if not hmac.compare_digest(sig, expected):
+            logger.warning("Invalid confirm-token signature for %s", email)
+            return None
+        expiry = datetime.fromisoformat(expiry_str)
+        if datetime.now(timezone.utc) > expiry:
+            logger.warning("Expired confirm token for %s", email)
+            return None
+        return email
+    except Exception as e:
+        logger.error("Error verifying confirm token: %s", e)
+        return None
+
+
+def generate_reset_token(email: str) -> str:
+    """Create a signed password-reset token.
+
+    Format: <email>|reset|<expiry_iso>|<signature>
+    """
+    normalized = normalize_email(email) or email
+    expiry = (datetime.now(timezone.utc) + timedelta(hours=PASSWORD_RESET_HOURS)).isoformat()
+    payload = f"{normalized}|reset|{expiry}"
+    sig = _sign_token(payload)
+    return base64.urlsafe_b64encode(f"{payload}|{sig}".encode()).decode()
+
+
+def verify_reset_token(token: str) -> Optional[str]:
+    """Verify a password-reset token. Returns the email or None."""
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode()).decode()
+        parts = decoded.split('|')
+        if len(parts) != 4 or parts[1] != 'reset':
+            return None
+        email, _, expiry_str, sig = parts
+        expected = _sign_token(f"{email}|reset|{expiry_str}")
+        if not hmac.compare_digest(sig, expected):
+            logger.warning("Invalid reset-token signature for %s", email)
+            return None
+        expiry = datetime.fromisoformat(expiry_str)
+        if datetime.now(timezone.utc) > expiry:
+            logger.warning("Expired reset token for %s", email)
+            return None
+        return email
+    except Exception as e:
+        logger.error("Error verifying reset token: %s", e)
+        return None
+
+
+# ─── Email Confirmation Helpers ──────────────────────────────────────────────
+
+def confirm_user_email(email: str) -> bool:
+    """Mark the user's email as confirmed in the DB."""
+    normalized = normalize_email(email)
+    if not normalized:
+        return False
+    try:
+        from scoring_engine.supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        if not supabase:
+            return False
+        result = (
+            supabase.table('users')
+            .update({'email_confirmed': True, 'email_confirmed_at': datetime.now(timezone.utc).isoformat()})
+            .ilike('email', normalized)
+            .execute()
+        )
+        return bool(result.data)
+    except Exception as e:
+        logger.error("Error confirming email for %s: %s", normalized, e)
+        return False
+
+
+def is_email_confirmed(email: str) -> bool:
+    """Check whether the user's email is confirmed."""
+    normalized = normalize_email(email)
+    if not normalized:
+        return False
+    try:
+        from scoring_engine.supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        if not supabase:
+            return False
+        result = (
+            supabase.table('users')
+            .select('email_confirmed')
+            .ilike('email', normalized)
+            .limit(1)
+            .execute()
+        )
+        rows = result.data or []
+        if not rows:
+            return False
+        return bool(rows[0].get('email_confirmed'))
+    except Exception as e:
+        logger.error("Error checking email confirmation for %s: %s", normalized, e)
+        return False
+
+
+def reset_password_with_token(token: str, new_password: str) -> bool:
+    """Verify a reset token and set the new password. Returns True on success."""
+    email = verify_reset_token(token)
+    if not email:
+        return False
+    if not new_password or len(new_password) < 6:
+        return False
+    try:
+        from scoring_engine.supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+        if not supabase:
+            return False
+        new_hash = hash_password(new_password)
+        result = (
+            supabase.table('users')
+            .update({'password_hash': new_hash})
+            .ilike('email', email)
+            .execute()
+        )
+        return bool(result.data)
+    except Exception as e:
+        logger.error("Error resetting password for %s: %s", email, e)
         return False

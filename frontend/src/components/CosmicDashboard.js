@@ -5,6 +5,7 @@ import LoadFlow from './LoadFlow';
 import StabilizersPanel from './StabilizersPanel';
 import AimsTrack from './AimsTrack';
 import UnlockGate from './UnlockGate';
+import { ShortDisclaimer, FullLegalDisclaimer } from '../legal/Disclaimer';
 
 const COSMIC_SECTION_ORDER = [
   { key: 'cosmic_snapshot', title: 'Cosmic Snapshot', icon: '🌌' },
@@ -165,9 +166,13 @@ const CosmicDashboard = ({
   const hasNarrative = Object.keys(sections).length > 0;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-5 sm:space-y-6 px-3 sm:px-4 py-4 sm:py-6">
+      {/* TOP-OF-REPORT SHORT DISCLAIMER — required by
+          docs/Legal Terms & Conditions.md §4 */}
+      <ShortDisclaimer />
+
       <div className="text-center py-4">
-        <h1 className="text-2xl font-bold text-indigo-900 flex items-center justify-center gap-2">
+        <h1 className="text-xl sm:text-2xl font-bold text-indigo-900 flex items-center justify-center gap-2 flex-wrap">
           <span>🌌</span> Cosmic Integration Dashboard
         </h1>
         <p className="text-sm text-gray-500 mt-1">
@@ -192,7 +197,7 @@ const CosmicDashboard = ({
 
       {/* AI narrative — synthesis sections from the cosmic report */}
       {hasNarrative && sections.cosmic_snapshot && (
-        <div className="bg-gradient-to-br from-indigo-50 via-white to-purple-50 rounded-2xl p-6 border border-indigo-100">
+        <div className="bg-gradient-to-br from-indigo-50 via-white to-purple-50 rounded-2xl p-4 sm:p-6 border border-indigo-100">
           <h3 className="text-lg font-bold text-indigo-900 mb-3 flex items-center gap-2">
             <span>🌌</span> Cosmic Snapshot
           </h3>
@@ -203,7 +208,7 @@ const CosmicDashboard = ({
       {/* Visual layer */}
       <GalaxyMap data={data} />
       {hasNarrative && sections.galaxy_convergence_map && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
           <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span>🪐</span> Galaxy Convergence Narrative
           </h3>
@@ -213,7 +218,7 @@ const CosmicDashboard = ({
 
       <LoadMatrix data={data} />
       {hasNarrative && sections.cross_domain_load_transfer && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
           <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span>🔁</span> Cross-Domain Load Transfer Analysis
           </h3>
@@ -223,7 +228,7 @@ const CosmicDashboard = ({
 
       <LoadFlow data={data} />
       {hasNarrative && sections.compensation_patterns && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
           <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span>🛡️</span> Compensation Patterns
           </h3>
@@ -232,7 +237,7 @@ const CosmicDashboard = ({
       )}
 
       {hasNarrative && sections.system_wide_sensitivity && (
-        <div className="bg-amber-50 rounded-2xl border border-amber-100 p-6">
+        <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4 sm:p-6">
           <h3 className="text-base font-bold text-amber-900 mb-3 flex items-center gap-2">
             <span>⚠️</span> System-Wide Sensitivity
           </h3>
@@ -242,7 +247,7 @@ const CosmicDashboard = ({
 
       <StabilizersPanel data={data} />
       {hasNarrative && sections.stabilizers_across_universe && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
           <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span>🌱</span> Stabilizers Across Your Universe
           </h3>
@@ -251,7 +256,7 @@ const CosmicDashboard = ({
       )}
 
       {hasNarrative && sections.lens_overlay_summary && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
           <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span>🔍</span> Lens Overlay Summary
           </h3>
@@ -261,7 +266,7 @@ const CosmicDashboard = ({
 
       <AimsTrack data={data} isCosmic={true} />
       {hasNarrative && sections.cosmic_aims && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
           <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span>🚀</span> Cosmic AIMS Pathway
           </h3>
@@ -270,7 +275,7 @@ const CosmicDashboard = ({
       )}
 
       {hasNarrative && sections.long_term_trajectory && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6">
           <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
             <span>🛰️</span> Long-Term Trajectory
           </h3>
@@ -279,7 +284,7 @@ const CosmicDashboard = ({
       )}
 
       {hasNarrative && sections.closing_synthesis && (
-        <div className="bg-gradient-to-br from-purple-50 via-white to-indigo-50 rounded-2xl p-6 border border-purple-100">
+        <div className="bg-gradient-to-br from-purple-50 via-white to-indigo-50 rounded-2xl p-4 sm:p-6 border border-purple-100">
           <h3 className="text-lg font-bold text-purple-900 mb-3 flex items-center gap-2">
             <span>⭐</span> Closing Synthesis
           </h3>
@@ -290,7 +295,7 @@ const CosmicDashboard = ({
       {/* Generate cosmic report CTA when we don't yet have one */}
       {!hasNarrative && (
         cosmicPaid ? (
-          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl p-6 border border-indigo-100 text-center">
+          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl p-4 sm:p-6 border border-indigo-100 text-center">
             <h3 className="font-bold text-indigo-900 mb-2">
               {eligibility?.generation_eligible
                 ? 'Generate Your Cosmic Integration Report'
@@ -337,7 +342,7 @@ const CosmicDashboard = ({
       )}
 
       {onViewReports && (
-        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl p-6 border border-indigo-100 text-center">
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-2xl p-4 sm:p-6 border border-indigo-100 text-center">
           <h3 className="font-bold text-indigo-900 mb-2">
             Explore Your Full AI Reports
           </h3>
@@ -353,6 +358,10 @@ const CosmicDashboard = ({
           </button>
         </div>
       )}
+
+      {/* END-OF-REPORT FULL LEGAL DISCLAIMER — required by
+          docs/Legal Terms & Conditions.md §4 */}
+      <FullLegalDisclaimer />
     </div>
   );
 };

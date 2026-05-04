@@ -19,6 +19,129 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Legal & medical disclaimers
+# ---------------------------------------------------------------------------
+# Mirror of the verbatim copy in `frontend/src/legal/legalText.js`.  Any
+# change to the user-facing legal text MUST be made in both places.
+# Keeping the strings here means the PDF layer doesn't need a network call
+# to render the boilerplate.
+
+_LEGAL_VERSION = "2026-04-30"
+_PRODUCT_NAME = "BEST Galaxy\u2122"
+_ENTITY_NAME = "International ABA Institute LLC"
+
+_PDF_INLINE_DISCLAIMER = (
+    "Educational insights only. Not medical or mental health advice."
+)
+
+_PDF_SHORT_DISCLAIMER = (
+    f"{_PRODUCT_NAME} provides educational insights into executive functioning "
+    "and behavior patterns. It is not a medical or mental health diagnostic "
+    "tool. Please consult a licensed professional for clinical concerns."
+)
+
+_PDF_FULL_DISCLAIMER_PARAS = [
+    f"The {_PRODUCT_NAME}, including all assessments, reports, interpretations, and "
+    f"recommendations provided by {_ENTITY_NAME} and its affiliated programs, is "
+    "intended for educational, informational, and personal development purposes only.",
+    "This content is not intended to diagnose, treat, cure, or prevent any medical, "
+    "psychological, or psychiatric condition. The information provided does not "
+    "constitute medical advice, mental health counseling, or professional clinical services.",
+    "Users are strongly encouraged to consult with a qualified physician, licensed mental "
+    "health professional, or other appropriate healthcare provider regarding any medical "
+    "or psychological concerns. Do not disregard or delay seeking professional advice "
+    "based on information obtained through this platform.",
+    f"Participation in the {_PRODUCT_NAME} assessment and use of any associated reports or "
+    "recommendations is voluntary. By engaging with this platform, you acknowledge and agree that:",
+]
+
+_PDF_FULL_DISCLAIMER_BULLETS = [
+    "You are solely responsible for your health, decisions, and actions.",
+    f"The {_PRODUCT_NAME} operates as a behavioral and educational framework, not a healthcare provider.",
+    "No guarantees are made regarding outcomes or results.",
+    "Individual results may vary based on personal, environmental, and behavioral factors.",
+]
+
+_PDF_FULL_DISCLAIMER_CLOSING = (
+    f"To the fullest extent permitted by law, {_ENTITY_NAME} and its affiliates disclaim "
+    "any liability for any direct, indirect, incidental, or consequential damages arising "
+    "from the use or misuse of this platform, including but not limited to reliance on "
+    "assessment results, reports, or recommendations."
+)
+
+
+def _build_short_disclaimer_flowable():
+    """Return a small Important-Notice callout suitable for the top of a report."""
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+
+    title_style = ParagraphStyle(
+        'DisclaimerTitle', fontName='Helvetica-Bold', fontSize=9,
+        textColor=colors.HexColor('#92400E'),  # amber-900
+        spaceAfter=2,
+    )
+    body_style = ParagraphStyle(
+        'DisclaimerBody', fontName='Helvetica', fontSize=8.5,
+        textColor=colors.HexColor('#78350F'),  # amber-950
+        leading=11,
+    )
+    inner = [
+        Paragraph('Important Notice', title_style),
+        Paragraph(_PDF_SHORT_DISCLAIMER, body_style),
+    ]
+    tbl = Table([[inner]], colWidths=[6.4 * 72])  # 6.4 inches inside default margins
+    tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#FEF3C7')),  # amber-100
+        ('LINEBEFORE', (0, 0), (0, 0), 3, colors.HexColor('#F59E0B')),  # amber-500 left bar
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    return [tbl, Spacer(1, 8)]
+
+
+def _build_full_disclaimer_flowables():
+    """Return the full Legal & Medical Disclaimer block for the end of a report."""
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import Paragraph, PageBreak, Spacer
+
+    heading = ParagraphStyle(
+        'LegalHeading', fontName='Helvetica-Bold', fontSize=12,
+        textColor=colors.HexColor('#111827'),  # gray-900
+        spaceAfter=8,
+    )
+    body = ParagraphStyle(
+        'LegalBody', fontName='Helvetica', fontSize=8.5,
+        textColor=colors.HexColor('#374151'),  # gray-700
+        leading=12.5, spaceAfter=6,
+    )
+    bullet = ParagraphStyle(
+        'LegalBullet', parent=body, leftIndent=14, bulletIndent=4,
+    )
+    version_note = ParagraphStyle(
+        'LegalVersion', fontName='Helvetica-Oblique', fontSize=7.5,
+        textColor=colors.HexColor('#6B7280'),  # gray-500
+        spaceBefore=8,
+    )
+
+    elements = [PageBreak(), Paragraph('Legal &amp; Medical Disclaimer', heading)]
+    for para in _PDF_FULL_DISCLAIMER_PARAS:
+        elements.append(Paragraph(para, body))
+    for b in _PDF_FULL_DISCLAIMER_BULLETS:
+        elements.append(Paragraph(f'\u2022 {b}', bullet))
+    elements.append(Spacer(1, 4))
+    elements.append(Paragraph(_PDF_FULL_DISCLAIMER_CLOSING, body))
+    elements.append(Paragraph(
+        f'Legal version v{_LEGAL_VERSION} \u2014 {_ENTITY_NAME}',
+        version_note,
+    ))
+    return elements
+
+
 def _make_progress_bar(pct, width_inch: float = 1.7, height_pt: float = 9,
                        fill_color: str = '#2563EB',
                        track_color: str = '#E5E7EB'):
@@ -104,6 +227,11 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         )
         from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
         from scoring_engine.output import build_scorecard_output
+        from scoring_engine.pdf_theme import (
+            THEME, BESTPageTemplate, build_cover_page, get_theme_styles,
+            make_donut_chart, make_rounded_bar, CalloutBox, SectionHeader,
+            themed_table_style, score_color, format_date,
+        )
         
         # Build the same scorecard data the frontend displays
         scorecard = build_scorecard_output(full_output)
@@ -112,30 +240,12 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter,
                                rightMargin=72, leftMargin=72,
-                               topMargin=72, bottomMargin=18)
+                               topMargin=48, bottomMargin=42)
         
         elements = []
-        
-        # Styles
-        styles = getSampleStyleSheet()
-        title_style = ParagraphStyle(
-            'SCTitle', parent=styles['Heading1'],
-            fontSize=24, textColor=colors.HexColor('#4F46E5'),
-            spaceAfter=10, alignment=TA_CENTER, fontName='Helvetica-Bold'
-        )
-        subtitle_style = ParagraphStyle(
-            'SCSubtitle', parent=styles['Normal'],
-            fontSize=13, textColor=colors.HexColor('#6366F1'),
-            spaceAfter=20, alignment=TA_CENTER, fontName='Helvetica-Oblique'
-        )
-        heading_style = ParagraphStyle(
-            'SCHeading', parent=styles['Heading2'],
-            fontSize=16, textColor=colors.HexColor('#312E81'),
-            spaceAfter=12, spaceBefore=16, fontName='Helvetica-Bold'
-        )
-        body_style = ParagraphStyle(
-            'SCBody', parent=styles['BodyText'],
-            fontSize=11, alignment=TA_JUSTIFY, spaceAfter=12, leading=16
+        ts = get_theme_styles(THEME['primary'])
+        page_tpl = BESTPageTemplate(
+            accent_color=THEME['primary'], lens_label='Free ScoreCard',
         )
         
         # Extract scorecard data
@@ -147,36 +257,6 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         lens_teasers = scorecard.get('lens_teasers', {})
         metadata = scorecard.get('metadata', {})
         
-        # ── 1. TITLE / ARCHETYPE ──
-        elements.append(Spacer(1, 0.3 * inch))
-        elements.append(Paragraph("BEST Executive Function Galaxy Assessment™", ParagraphStyle(
-            'SmallTitle', parent=styles['Normal'],
-            fontSize=11, textColor=colors.HexColor('#6B7280'),
-            spaceAfter=8, alignment=TA_CENTER, fontName='Helvetica'
-        )))
-        elements.append(Paragraph("FREE SCORECARD", ParagraphStyle(
-            'TierBadge', parent=styles['Normal'],
-            fontSize=10, textColor=colors.HexColor('#10B981'),
-            spaceAfter=20, alignment=TA_CENTER, fontName='Helvetica-Bold'
-        )))
-        
-        archetype_name = snapshot.get('archetype_name', 'Unknown')
-        elements.append(Paragraph(archetype_name.upper(), title_style))
-        tagline = snapshot.get('tagline', '')
-        if tagline:
-            elements.append(Paragraph(f'"{tagline}"', subtitle_style))
-        
-        # Framework Reference Line (Item 5)
-        framework_ref_style = ParagraphStyle(
-            'FrameworkRef', parent=styles['Normal'],
-            fontSize=9, textColor=colors.HexColor('#6366F1'),
-            spaceAfter=16, alignment=TA_CENTER, fontName='Helvetica-Oblique'
-        )
-        elements.append(Paragraph(
-            'This profile reflects how your internal capacity (BHP) is interacting with your environmental demands (PEI).',
-            framework_ref_style
-        ))
-        
         # Report info - fetch user name
         user_id = metadata.get('user_email') or metadata.get('user_id', 'N/A')
         user_name = _get_user_name(user_id)
@@ -184,33 +264,33 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
             user_name = user_name[:37] + '...'
         
         timestamp = metadata.get('timestamp', datetime.now().isoformat())
-        try:
-            date_str = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).strftime('%B %d, %Y at %I:%M %p')
-        except Exception:
-            date_str = timestamp[:10]
+        date_str = format_date(timestamp)
         
-        # Professional header box
-        elements.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#4F46E5'), spaceAfter=12))
-        info_data = [
-            ['Prepared for:', user_name],
-            ['Report Date:', date_str],
-            ['Report Type:', 'Free ScoreCard'],
-        ]
-        info_table = Table(info_data, colWidths=[1.8 * inch, 4.2 * inch])
-        info_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#312E81')),
-            ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#1F2937')),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ]))
-        elements.append(info_table)
-        elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#E5E7EB'), spaceAfter=16))
+        archetype_name = snapshot.get('archetype_name', 'Unknown')
+        tagline = snapshot.get('tagline', '')
         
-        # Domain color + tag mapping (Items 1 & 2)
+        # ── COVER PAGE ──
+        elements += build_cover_page(
+            report_title=archetype_name.upper(),
+            report_subtitle=f'"{tagline}"' if tagline else 'Your Executive Function Profile',
+            user_name=user_name,
+            date_str=date_str,
+            lens_label='Free ScoreCard',
+            accent_color=THEME['primary'],
+            extra_lines=[('Report Type:', 'Free ScoreCard')],
+        )
+
+        elements += _build_short_disclaimer_flowable()
+        elements.append(Spacer(1, 0.2 * inch))
+        elements.append(Paragraph(
+            'This profile reflects how your internal capacity (BHP) is interacting with your environmental demands (PEI).',
+            ParagraphStyle('FrameworkRef', parent=ts['caption'],
+                           fontSize=9, textColor=colors.HexColor(THEME['indigo']),
+                           fontName='Helvetica-Oblique', spaceAfter=4),
+        ))
+        elements.append(PageBreak())
+        
+        # Domain color + tag mapping
         DOMAIN_META = {
             'Executive Skills & Behavior':      {'tag': 'Action & Follow-Through',  'color': '#3B82F6'},
             'Cognitive & Motivational Systems': {'tag': 'Focus & Drive',            'color': '#8B5CF6'},
@@ -219,34 +299,52 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         }
         
         # ── 2. EXECUTIVE FUNCTION CONSTELLATION (4 grouped domains) ──
-        elements.append(Paragraph("Your Executive Function Constellation", heading_style))
+        elements.append(SectionHeader(1, "Your Executive Function Constellation",
+                                      accent_color=THEME['primary']))
+        elements.append(Spacer(1, 0.1 * inch))
 
-        # Per-cell paragraph styles. Wrapping is enabled by passing Paragraph
-        # objects (instead of raw strings) into the Table — this prevents long
-        # names like "Cognitive & Motivational Systems" from overflowing into
-        # the next column.
+        # Donut chart row — one per constellation group
+        donut_cells = []
+        for group in constellation:
+            pct = group.get('percentage', 0)
+            meta = DOMAIN_META.get(group['name'], {'tag': '', 'color': '#6B7280'})
+            is_env = group['name'] == 'Environmental Demands'
+            display_name = 'Env. Pressure\nLoad (PEI)' if is_env else group['name']
+            donut_cells.append(
+                make_donut_chart(
+                    value=pct, max_value=100, size=72, ring_width=10,
+                    fill_color=meta['color'],
+                    label=display_name.split('\n')[0][:18],
+                )
+            )
+        if donut_cells:
+            donut_table = Table([donut_cells],
+                                colWidths=[1.55 * inch] * len(donut_cells))
+            donut_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 2),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+            ]))
+            elements.append(donut_table)
+            elements.append(Spacer(1, 0.12 * inch))
+
+        # Detailed constellation table
+        styles = getSampleStyleSheet()
         const_header_style = ParagraphStyle(
             'ConstHeader', parent=styles['Normal'], fontName='Helvetica-Bold',
-            fontSize=10, textColor=colors.whitesmoke, alignment=TA_CENTER, leading=12,
+            fontSize=9, textColor=colors.whitesmoke, alignment=TA_CENTER, leading=12,
         )
         const_tag_style = ParagraphStyle(
             'ConstTag', parent=styles['Normal'], fontName='Helvetica',
-            fontSize=9, textColor=colors.HexColor('#6B7280'), alignment=TA_LEFT, leading=11,
-        )
-        const_score_style = ParagraphStyle(
-            'ConstScore', parent=styles['Normal'], fontName='Helvetica',
-            fontSize=10, textColor=colors.HexColor('#1F2937'), alignment=TA_CENTER, leading=12,
-        )
-        const_pct_style = ParagraphStyle(
-            'ConstPct', parent=styles['Normal'], fontName='Helvetica',
-            fontSize=10, textColor=colors.HexColor('#1F2937'), alignment=TA_CENTER, leading=12,
+            fontSize=8.5, textColor=colors.HexColor(THEME['gray_500']), alignment=TA_LEFT, leading=11,
         )
 
         constellation_data = [[
             Paragraph('Domain Group', const_header_style),
             Paragraph('Tag', const_header_style),
             Paragraph('Score', const_header_style),
-            Paragraph('Percentage', const_header_style),
+            Paragraph('Level', const_header_style),
         ]]
         for group in constellation:
             pct = group.get('percentage', 0)
@@ -254,31 +352,34 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
             is_env = group['name'] == 'Environmental Demands'
             display_name = 'Env. Pressure Load (PEI)' if is_env else group['name']
             display_tag = 'Higher = More Pressure' if is_env else meta['tag']
-            display_pct = f"{pct}% ({'High Pressure' if pct >= 80 else 'Moderate Pressure' if pct >= 60 else pct})" if is_env else f"{pct}%"
+
+            bar = make_rounded_bar(
+                pct, width_inch=1.0, height_pt=10,
+                fill_color=meta['color'], show_label=True,
+            )
 
             name_style = ParagraphStyle(
                 f"ConstName_{group['name']}", parent=styles['Normal'],
-                fontName='Helvetica-Bold', fontSize=10,
+                fontName='Helvetica-Bold', fontSize=9,
                 textColor=colors.HexColor(meta['color']),
                 alignment=TA_LEFT, leading=12,
             )
             constellation_data.append([
                 Paragraph(display_name, name_style),
                 Paragraph(display_tag, const_tag_style),
-                Paragraph(f"{group['score']:.3f}", const_score_style),
-                Paragraph(display_pct, const_pct_style),
+                Paragraph(f"{group['score']:.3f}", ParagraphStyle(
+                    'ConstSc', parent=styles['Normal'], fontName='Helvetica',
+                    fontSize=9, textColor=colors.HexColor(THEME['gray_800']),
+                    alignment=TA_CENTER, leading=12)),
+                bar,
             ])
 
-        const_table = Table(constellation_data, colWidths=[2.2 * inch, 1.6 * inch, 1.1 * inch, 1.1 * inch])
-        const_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4F46E5')),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#D1D5DB')),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ]))
+        const_table = Table(constellation_data, colWidths=[2.0 * inch, 1.4 * inch, 0.8 * inch, 1.8 * inch])
+        const_table.setStyle(TableStyle(
+            themed_table_style(THEME['primary']) + [
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]
+        ))
         elements.append(const_table)
         elements.append(Spacer(1, 0.2 * inch))
         
@@ -317,84 +418,110 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         
         # Color-code
         if dynamic_label in ('Surplus Capacity', 'Stable Capacity'):
-            status_color = '#10B981'
+            status_color = THEME['green']
         elif dynamic_label == 'Balanced Load':
-            status_color = '#3B82F6'
+            status_color = THEME['blue']
         elif dynamic_label == 'Emerging Strain':
-            status_color = '#F59E0B'
+            status_color = THEME['amber']
         else:
-            status_color = '#EF4444'
+            status_color = THEME['red']
         
-        delta_color = '#DC2626' if delta > 0.01 else '#2563EB' if delta < -0.01 else '#6B7280'
+        delta_color = THEME['red'] if delta > 0.01 else THEME['blue'] if delta < -0.01 else THEME['gray_500']
         delta_sign = '+' if delta > 0 else ''
         
-        elements.append(Paragraph(
-            f'<font color="#2563EB"><b>Load Balance: {dynamic_label}</b></font>'
-            f'&nbsp;&nbsp;&nbsp;<font color="#2563EB" size="9">[{tilt_label}]</font>',
-            ParagraphStyle('LoadHeader', parent=body_style, fontSize=14, alignment=TA_LEFT)
-        ))
+        elements.append(SectionHeader(2, f"Load Balance: {dynamic_label}",
+                                      accent_color=status_color))
         elements.append(Spacer(1, 0.1 * inch))
         
-        # BHP vs PEI teeter-totter table
+        # BHP vs PEI visual comparison with rounded bars
         if pei_score or bhp_score:
+            bhp_pct = min(100, (bhp_score or 0) * 100)
+            pei_pct = min(100, (pei_score or 0) * 100)
             lb_data = [
-                ['INTERNAL CAPACITY (BHP)', '⚖', 'ENVIRONMENTAL LOAD (PEI)'],
-                [f'{bhp_score:.3f}', f'Load Diff: {delta_sign}{delta:.3f}', f'{pei_score:.3f}'],
+                [
+                    Paragraph('<b>INTERNAL CAPACITY (BHP)</b>', ParagraphStyle(
+                        'LBH1', parent=styles['Normal'], fontSize=8,
+                        textColor=colors.HexColor(THEME['blue']),
+                        fontName='Helvetica-Bold', alignment=TA_CENTER, leading=10)),
+                    '',
+                    Paragraph('<b>ENVIRONMENTAL LOAD (PEI)</b>', ParagraphStyle(
+                        'LBH2', parent=styles['Normal'], fontSize=8,
+                        textColor=colors.HexColor(THEME['red']),
+                        fontName='Helvetica-Bold', alignment=TA_CENTER, leading=10)),
+                ],
+                [
+                    make_rounded_bar(bhp_pct, width_inch=2.2, height_pt=14,
+                                     fill_color=THEME['blue'], show_label=True),
+                    Paragraph(f'<b>{delta_sign}{delta:.3f}</b>', ParagraphStyle(
+                        'LBDelta', parent=styles['Normal'], fontSize=10,
+                        textColor=colors.HexColor(delta_color),
+                        fontName='Helvetica-Bold', alignment=TA_CENTER, leading=14)),
+                    make_rounded_bar(pei_pct, width_inch=2.2, height_pt=14,
+                                     fill_color=THEME['red'], show_label=True),
+                ],
             ]
-            lb_table = Table(lb_data, colWidths=[2.2 * inch, 1.6 * inch, 2.2 * inch])
+            lb_table = Table(lb_data, colWidths=[2.7 * inch, 0.8 * inch, 2.7 * inch])
             lb_table.setStyle(TableStyle([
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 9),
-                ('TEXTCOLOR', (0, 0), (0, 0), colors.HexColor('#8B5CF6')),
-                ('TEXTCOLOR', (1, 0), (1, 0), colors.HexColor('#D4A62A')),
-                ('TEXTCOLOR', (2, 0), (2, 0), colors.HexColor('#F87171')),
-                ('FONTNAME', (0, 1), (0, 1), 'Helvetica-Bold'),
-                ('FONTNAME', (2, 1), (2, 1), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 1), (-1, 1), 12),
-                ('TEXTCOLOR', (0, 1), (0, 1), colors.HexColor('#8B5CF6')),
-                ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor(delta_color)),
-                ('FONTSIZE', (1, 1), (1, 1), 9),
-                ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor('#F87171')),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('BACKGROUND', (0, 0), (0, 0), colors.HexColor(THEME['blue_light'])),
+                ('BACKGROUND', (2, 0), (2, 0), colors.HexColor(THEME['red_light'])),
+                ('BACKGROUND', (1, 0), (1, 0), colors.HexColor(THEME['gray_100'])),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
                 ('TOPPADDING', (0, 0), (-1, -1), 6),
+                ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor(THEME['gray_200'])),
             ]))
             elements.append(lb_table)
-        elements.append(Spacer(1, 0.05 * inch))
+        elements.append(Spacer(1, 0.08 * inch))
         
-        # Classification chips
-        chips_text = (
-            f'<font size="9"><b>Load State:</b> {dynamic_label} &nbsp; | &nbsp; '
-            f'<b>System Status:</b> {tilt_label} &nbsp; | &nbsp; '
-            f'<b>Pressure Level:</b> {pressure_level}</font>'
-        )
-        elements.append(Paragraph(chips_text, ParagraphStyle(
-            'Chips', parent=body_style, fontSize=9, textColor=colors.HexColor('#6B7280')
-        )))
+        # Classification chips as a styled row
+        chip_data = [[
+            Paragraph(f'<b>Load State</b><br/><font color="{status_color}">{dynamic_label}</font>',
+                      ParagraphStyle('Chip1', parent=styles['Normal'], fontSize=8,
+                                     textColor=colors.HexColor(THEME['gray_600']),
+                                     alignment=TA_CENTER, leading=11)),
+            Paragraph(f'<b>System Status</b><br/><font color="{status_color}">{tilt_label}</font>',
+                      ParagraphStyle('Chip2', parent=styles['Normal'], fontSize=8,
+                                     textColor=colors.HexColor(THEME['gray_600']),
+                                     alignment=TA_CENTER, leading=11)),
+            Paragraph(f'<b>Pressure Level</b><br/><font color="{status_color}">{pressure_level}</font>',
+                      ParagraphStyle('Chip3', parent=styles['Normal'], fontSize=8,
+                                     textColor=colors.HexColor(THEME['gray_600']),
+                                     alignment=TA_CENTER, leading=11)),
+        ]]
+        chip_table = Table(chip_data, colWidths=[2.1 * inch, 2.1 * inch, 2.1 * inch])
+        chip_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor(THEME['gray_50'])),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.3, colors.HexColor(THEME['gray_200'])),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(chip_table)
+        elements.append(Spacer(1, 0.1 * inch))
         
         if load_msg:
-            elements.append(Paragraph(
-                f'<i>{load_msg}</i>',
-                ParagraphStyle('LoadMsg', parent=body_style, fontSize=11,
-                             textColor=colors.HexColor('#4B5563'), alignment=TA_CENTER)
+            elements.append(CalloutBox(
+                'Load Insight', load_msg,
+                accent_color=status_color, bg_color=THEME['gray_50'],
             ))
         
         # AI-Generated Executive Summary
         if executive_summary:
-            elements.append(Spacer(1, 0.1 * inch))
-            summary_style = ParagraphStyle(
-                'ExecSummary', parent=body_style, fontSize=10,
-                textColor=colors.HexColor('#374151'), leading=15,
-                borderColor=colors.HexColor('#E5E7EB'), borderWidth=1,
-                borderPadding=8, backColor=colors.HexColor('#F9FAFB')
-            )
-            elements.append(Paragraph(executive_summary, summary_style))
+            elements.append(Spacer(1, 0.08 * inch))
+            elements.append(CalloutBox(
+                'Executive Summary', executive_summary,
+                accent_color=THEME['primary'], bg_color=THEME['primary_light'],
+            ))
         elements.append(Spacer(1, 0.15 * inch))
         
         # ── 4. STRENGTHS & GROWTH EDGES ──
         # Filter Environmental Demands from strengths (it's pressure, not capacity)
         filtered_strengths = [s for s in strengths if 'Environmental' not in s and 'ENVIRONMENTAL' not in s]
-        elements.append(Paragraph("Summary", heading_style))
+        elements.append(SectionHeader(3, "Strengths & Growth Edges",
+                                      accent_color=THEME['green']))
+        elements.append(Spacer(1, 0.06 * inch))
         
         summary_data = [['Top Strengths', 'Growth Edges']]
         max_len = max(len(filtered_strengths), len(growth_edges), 1)
@@ -425,11 +552,13 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         # ── 4b. APPLIED EXECUTIVE FUNCTIONING DOMAINS (Phase 4) ──
         applied_domains = scorecard.get('applied_domains', {})
         if applied_domains:
-            elements.append(Paragraph("Applied Executive Functioning Domains", heading_style))
+            elements.append(SectionHeader(4, "Applied Executive Functioning Domains",
+                                          accent_color=THEME['purple']))
+            elements.append(Spacer(1, 0.04 * inch))
             elements.append(Paragraph(
                 "How your executive functioning expresses in everyday living",
-                ParagraphStyle('ADSubtitle', parent=body_style, fontSize=9,
-                             textColor=colors.HexColor('#6B7280'), spaceAfter=10)
+                ParagraphStyle('ADSubtitle', parent=ts['body_small'], fontSize=9,
+                             textColor=colors.HexColor(THEME['gray_500']), spaceAfter=10)
             ))
             
             # Domain-specific subtitles (GAP 7)
@@ -466,157 +595,128 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
                 elements.append(Paragraph(
                     f'<font color="{accent}"><b>{label}</b></font>'
                     f'&nbsp;&nbsp;<font color="{accent}" size="9">[{status_band}]</font>',
-                    ParagraphStyle('ADTitle', parent=body_style, fontSize=13, spaceAfter=2)
+                    ParagraphStyle('ADTitle', parent=ts['subheading'], fontSize=13, spaceAfter=2)
                 ))
                 elements.append(Paragraph(
                     f'<i>{domain_subtitles.get(key, "")}</i>',
-                    ParagraphStyle('ADDomSub', parent=body_style, fontSize=9,
-                                 textColor=colors.HexColor('#6B7280'), spaceAfter=6)
+                    ParagraphStyle('ADDomSub', parent=ts['body_small'],
+                                 textColor=colors.HexColor(THEME['gray_500']), spaceAfter=6)
                 ))
                 
-                # Metrics table — 5 columns matching web report.
-                # Status Band is wrapped in a Paragraph so multi-word labels
-                # (e.g. "Stable but Vulnerable") wrap inside the cell instead
-                # of overflowing into neighboring columns.
-                lb_color = '#16A34A' if lb_val >= 0 else '#DC2626'
+                # Metrics row: donut chart + key stats side-by-side
+                lb_color = THEME['green'] if lb_val >= 0 else THEME['red']
                 status_band_style = ParagraphStyle(
                     'StatusBandFree', parent=styles['Normal'],
                     fontName='Helvetica-Bold', fontSize=10,
-                    textColor=colors.HexColor('#1F2937'),
+                    textColor=colors.HexColor(THEME['gray_800']),
                     alignment=TA_CENTER, leading=12,
                 )
-                ad_data = [
-                    ['Domain Score', 'BHP (Capacity)', 'PEI (Pressure)', 'Load Balance', 'Status Band'],
+                
+                ad_donut = make_donut_chart(
+                    value=domain_score, max_value=100, size=68, ring_width=10,
+                    fill_color=accent, label='Domain Score',
+                )
+                ad_stats = [
+                    ['BHP (Capacity)', 'PEI (Pressure)', 'Load Balance', 'Status Band'],
                     [
-                        f'{domain_score:.0f}/100',
                         f'{bhp_val:.1f}',
                         f'{pei_val:.1f}',
                         f'{lb_val:+.1f}',
                         Paragraph(status_band, status_band_style),
                     ],
                 ]
-                ad_table = Table(ad_data, colWidths=[1.1 * inch, 1.2 * inch, 1.2 * inch, 1.1 * inch, 1.4 * inch])
-                ad_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(accent)),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ad_stats_tbl = Table(ad_stats, colWidths=[1.1 * inch, 1.1 * inch, 1.0 * inch, 1.3 * inch])
+                ad_stats_tbl.setStyle(TableStyle(
+                    themed_table_style(accent) + [
+                        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 1), (-1, 1), 11),
+                        ('TEXTCOLOR', (0, 1), (0, 1), colors.HexColor(THEME['blue'])),
+                        ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor(THEME['red'])),
+                        ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor(lb_color)),
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                    ]
+                ))
+                layout_row = Table(
+                    [[ad_donut, ad_stats_tbl]],
+                    colWidths=[1.2 * inch, 4.8 * inch],
+                )
+                layout_row.setStyle(TableStyle([
                     ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, 0), 8),
-                    ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 1), (-1, 1), 11),
-                    ('TEXTCOLOR', (0, 1), (0, 1), colors.HexColor(accent)),
-                    ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor('#2563EB')),
-                    ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor('#DC2626')),
-                    ('TEXTCOLOR', (3, 1), (3, 1), colors.HexColor(lb_color)),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                    ('TOPPADDING', (0, 0), (-1, -1), 6),
-                    ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#D1D5DB')),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 4),
                 ]))
-                elements.append(ad_table)
-                elements.append(Spacer(1, 0.06 * inch))
+                elements.append(layout_row)
+                elements.append(Spacer(1, 0.08 * inch))
                 
-                # Block 2: BHP vs PEI visual balance bar (GAP 5).
-                # Bars are rendered as vector Drawings sized in proportion to
-                # each side's share of the (BHP + PEI) total — this replaces
-                # the previous Unicode block string which all rendered as
-                # identical missing-glyph boxes in Courier-Bold.
+                # Block 2: BHP vs PEI visual balance with rounded bars
                 bhp_total = bhp_val + pei_val if (bhp_val + pei_val) > 0 else 1
                 bhp_share_pct = round((bhp_val / bhp_total) * 100)
                 pei_share_pct = round((pei_val / bhp_total) * 100)
-                balance_label = 'BHP > PEI' if lb_val > 0 else ('PEI > BHP' if lb_val < 0 else 'BALANCED')
                 bal_data = [
-                    ['INTERNAL CAPACITY (BHP)', '', 'BALANCE', '', 'EXTERNAL PRESSURE (PEI)'],
                     [
-                        _make_progress_bar(bhp_share_pct, width_inch=1.7, fill_color='#2563EB'),
-                        f'{bhp_val:.1f}',
-                        balance_label,
-                        f'{pei_val:.1f}',
-                        _make_progress_bar(pei_share_pct, width_inch=1.7, fill_color='#DC2626'),
+                        make_rounded_bar(bhp_share_pct, width_inch=2.4, height_pt=12,
+                                         fill_color=THEME['blue'], show_label=True),
+                        Paragraph(f'<b>{"BHP > PEI" if lb_val > 0 else ("PEI > BHP" if lb_val < 0 else "BALANCED")}</b>',
+                                  ParagraphStyle('BalLbl', parent=styles['Normal'], fontSize=8,
+                                                 textColor=colors.HexColor(THEME['gray_600']),
+                                                 alignment=TA_CENTER, leading=10)),
+                        make_rounded_bar(pei_share_pct, width_inch=2.4, height_pt=12,
+                                         fill_color=THEME['red'], show_label=True),
                     ],
                 ]
-                bal_tbl = Table(
-                    bal_data,
-                    colWidths=[1.8 * inch, 0.45 * inch, 1.5 * inch, 0.45 * inch, 1.8 * inch],
-                )
+                bal_tbl = Table(bal_data, colWidths=[2.8 * inch, 0.8 * inch, 2.8 * inch])
                 bal_tbl.setStyle(TableStyle([
-                    ('SPAN', (0, 0), (1, 0)),
-                    ('SPAN', (3, 0), (4, 0)),
-                    ('BACKGROUND', (0, 0), (1, 0), colors.HexColor('#EFF6FF')),
-                    ('BACKGROUND', (2, 0), (2, 0), colors.HexColor('#F3F4F6')),
-                    ('BACKGROUND', (3, 0), (4, 0), colors.HexColor('#FEF2F2')),
-                    ('TEXTCOLOR', (0, 0), (1, 0), colors.HexColor('#1E40AF')),
-                    ('TEXTCOLOR', (2, 0), (2, 0), colors.HexColor('#374151')),
-                    ('TEXTCOLOR', (3, 0), (4, 0), colors.HexColor('#991B1B')),
-                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, 0), 7),
-                    ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 1), (-1, 1), 9),
-                    ('TEXTCOLOR', (1, 1), (1, 1), colors.HexColor('#1E40AF')),
-                    ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor('#374151')),
-                    ('TEXTCOLOR', (3, 1), (3, 1), colors.HexColor('#991B1B')),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                     ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                    ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-                    ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-                    ('ALIGN', (2, 0), (2, -1), 'CENTER'),
-                    ('ALIGN', (3, 0), (3, -1), 'RIGHT'),
-                    ('ALIGN', (4, 0), (4, -1), 'RIGHT'),
-                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
                     ('TOPPADDING', (0, 0), (-1, -1), 4),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
                 ]))
                 elements.append(bal_tbl)
                 elements.append(Spacer(1, 0.08 * inch))
                 
-                # Block 3: When Stable / When Loaded
+                # Block 3: When Stable / When Loaded — callout boxes
                 if interp.get('when_stable'):
-                    elements.append(Paragraph(
-                        f'<font color="#16A34A"><b>When Stable:</b></font> {interp["when_stable"]}',
-                        ParagraphStyle('ADInterp', parent=body_style, fontSize=10, leading=14, spaceAfter=4)
+                    elements.append(CalloutBox(
+                        'When Stable', interp['when_stable'],
+                        accent_color=THEME['green'], bg_color=THEME['green_light'],
                     ))
+                    elements.append(Spacer(1, 0.04 * inch))
                 if interp.get('when_loaded'):
-                    elements.append(Paragraph(
-                        f'<font color="#EA580C"><b>Under Load:</b></font> {interp["when_loaded"]}',
-                        ParagraphStyle('ADInterp2', parent=body_style, fontSize=10, leading=14, spaceAfter=6)
+                    elements.append(CalloutBox(
+                        'Under Load', interp['when_loaded'],
+                        accent_color='#EA580C', bg_color=THEME['amber_light'],
                     ))
+                    elements.append(Spacer(1, 0.06 * inch))
                 
                 # Block 4: Risk Flags
                 if active_flags:
                     elements.append(Paragraph(
                         '<b>Risk Flags</b>',
-                        ParagraphStyle('FlagHead', parent=body_style, fontSize=10,
-                                     textColor=colors.HexColor('#374151'), spaceBefore=2, spaceAfter=4)
+                        ParagraphStyle('FlagHead', parent=ts['subheading'], fontSize=10,
+                                     textColor=colors.HexColor(THEME['gray_700']), spaceBefore=2, spaceAfter=4)
                     ))
                     flags_text = '&nbsp;&nbsp;|&nbsp;&nbsp;'.join(
-                        f'<font color="#DC2626"><b>!</b> {f}</font>' for f in active_flags
+                        f'<font color="{THEME["red"]}"><b>!</b> {f}</font>' for f in active_flags
                     )
-                    elements.append(Paragraph(
-                        flags_text,
-                        ParagraphStyle('ADFlags', parent=body_style, fontSize=9, leading=13, spaceAfter=4)
-                    ))
+                    elements.append(Paragraph(flags_text, ts['body_small']))
                 
-                # Block 5: Domain Interpretation narrative (GAP 6)
+                # Block 5: Domain Interpretation narrative
                 if interp.get('domain_narrative'):
-                    elements.append(Paragraph(
-                        '<b>Domain Interpretation</b>',
-                        ParagraphStyle('DNHead', parent=body_style, fontSize=10,
-                                     textColor=colors.HexColor('#374151'), spaceBefore=2, spaceAfter=4)
+                    elements.append(CalloutBox(
+                        'Domain Interpretation', interp['domain_narrative'],
+                        accent_color=accent, bg_color=THEME['gray_50'],
                     ))
-                    elements.append(Paragraph(
-                        interp['domain_narrative'],
-                        ParagraphStyle('DNBody', parent=body_style, fontSize=9, leading=13,
-                                     textColor=colors.HexColor('#374151'), spaceAfter=6)
-                    ))
+                    elements.append(Spacer(1, 0.06 * inch))
                 
-                # Subvariable Breakdown table
+                # Subvariable Breakdown table with rounded bars
                 if subvariables:
                     elements.append(Paragraph(
                         '<b>Subvariable Breakdown</b>',
-                        ParagraphStyle('SVHead', parent=body_style, fontSize=10,
-                                     textColor=colors.HexColor('#374151'), spaceBefore=4, spaceAfter=4)
+                        ParagraphStyle('SVHead', parent=ts['subheading'], fontSize=10,
+                                     textColor=colors.HexColor(THEME['gray_700']), spaceBefore=4, spaceAfter=4)
                     ))
-                    sv_data = [['Subvariable', 'Score', 'Bar']]
-                    sv_bar_pcts = []  # parallel list, bar drawn after color is decided
+                    sv_data = [['Subvariable', 'Score', 'Level']]
                     for sv_name, sv_score in subvariables.items():
                         clean_name = sv_name.replace('_', ' ')
                         for prefix in ('financial ', 'health '):
@@ -628,50 +728,25 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
                         except (TypeError, ValueError):
                             bar_pct = 0.0
                         bar_pct = max(0.0, min(100.0, bar_pct))
-                        sv_bar_pcts.append(bar_pct)
-                        # Placeholder; replaced with a real Drawing right after
-                        # we know the row's accent color.
-                        sv_data.append([clean_name, f'{bar_pct:.0f}', ''])
+                        sc = score_color(bar_pct)
+                        sv_data.append([
+                            clean_name,
+                            f'{bar_pct:.0f}',
+                            make_rounded_bar(bar_pct, width_inch=2.2, height_pt=10,
+                                             fill_color=sc, show_label=False),
+                        ])
 
-                    # Pre-compute per-row colors and then inject proportional
-                    # bar Drawings into column 2 so the bar visually matches
-                    # the score (replaces unicode block chars that the
-                    # standard Type-1 fonts can't render).
-                    row_colors = []
-                    for row_i in range(1, len(sv_data)):
-                        score_val = float(sv_data[row_i][1])
-                        if score_val >= 70:
-                            sc = '#16A34A'
-                        elif score_val >= 40:
-                            sc = '#D97706'
-                        else:
-                            sc = '#DC2626'
-                        row_colors.append(sc)
-                        sv_data[row_i][2] = _make_progress_bar(
-                            sv_bar_pcts[row_i - 1], width_inch=2.6,
-                            fill_color=sc,
-                        )
-
-                    sv_table = Table(sv_data, colWidths=[2.4 * inch, 0.6 * inch, 3.0 * inch])
-                    sv_style_cmds = [
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F3F4F6')),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 8),
-                        ('FONTNAME', (0, 1), (0, -1), 'Helvetica'),
-                        ('FONTSIZE', (0, 1), (-1, -1), 8),
-                        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+                    sv_table = Table(sv_data, colWidths=[2.2 * inch, 0.6 * inch, 2.8 * inch])
+                    sv_cmds = themed_table_style(accent) + [
                         ('ALIGN', (1, 0), (1, -1), 'CENTER'),
-                        ('ALIGN', (2, 0), (2, -1), 'LEFT'),
                         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-                        ('TOPPADDING', (0, 0), (-1, -1), 3),
-                        ('LEFTPADDING', (0, 0), (-1, -1), 6),
                     ]
-                    for row_i, sc in enumerate(row_colors, start=1):
-                        sv_style_cmds.append(('TEXTCOLOR', (1, row_i), (1, row_i), colors.HexColor(sc)))
-                        sv_style_cmds.append(('FONTNAME', (1, row_i), (1, row_i), 'Helvetica-Bold'))
-                    sv_table.setStyle(TableStyle(sv_style_cmds))
+                    for row_i in range(1, len(sv_data)):
+                        sval = float(sv_data[row_i][1])
+                        sc = score_color(sval)
+                        sv_cmds.append(('TEXTCOLOR', (1, row_i), (1, row_i), colors.HexColor(sc)))
+                        sv_cmds.append(('FONTNAME', (1, row_i), (1, row_i), 'Helvetica-Bold'))
+                    sv_table.setStyle(TableStyle(sv_cmds))
                     elements.append(sv_table)
                     elements.append(Spacer(1, 0.08 * inch))
                 
@@ -679,79 +754,50 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
                 if aims:
                     elements.append(Paragraph(
                         '<b>AIMS Targets</b>',
-                        ParagraphStyle('AimsHead', parent=body_style, fontSize=10,
-                                     textColor=colors.HexColor('#374151'), spaceBefore=2, spaceAfter=4)
+                        ParagraphStyle('AimsHead', parent=ts['subheading'], fontSize=10,
+                                     textColor=colors.HexColor(THEME['gray_700']), spaceBefore=2, spaceAfter=4)
                     ))
                     aims_data = [['Phase', 'Target']]
                     for a in aims:
                         aims_data.append([a.get('phase', ''), a.get('target', '')])
                     aims_tbl = Table(aims_data, colWidths=[1.2 * inch, 4.8 * inch])
-                    aims_tbl.setStyle(TableStyle([
-                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor(accent)),
-                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, 0), 8),
-                        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 1), (-1, -1), 8),
-                        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-                        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D1D5DB')),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-                        ('TOPPADDING', (0, 0), (-1, -1), 4),
-                        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F9FAFB')]),
-                    ]))
+                    aims_tbl.setStyle(TableStyle(themed_table_style(accent)))
                     elements.append(aims_tbl)
                 
                 elements.append(Spacer(1, 0.2 * inch))
         
         # ── 5. FOUR LENS TEASERS ──
-        elements.append(Paragraph("Your Profile Across 4 Lenses", heading_style))
-        
-        lens_icons = {
-            'PERSONAL_LIFESTYLE': 'Personal / Lifestyle',
-            'STUDENT_SUCCESS': 'Student Success',
-            'PROFESSIONAL_LEADERSHIP': 'Professional / Leadership',
-            'FAMILY_ECOSYSTEM': 'Family / Ecosystem',
-        }
-        
-        for key, lens_data in lens_teasers.items():
-            title = lens_data.get('title', lens_icons.get(key, key))
-            teaser = lens_data.get('teaser', '')
-            elements.append(Paragraph(
-                f'<b>{title}</b>',
-                ParagraphStyle('LensTitle', parent=body_style, fontSize=12,
-                             textColor=colors.HexColor('#312E81'), spaceAfter=4)
-            ))
-            elements.append(Paragraph(teaser, body_style))
-            elements.append(Spacer(1, 0.1 * inch))
-        
-        # ── FOOTER ──
-        elements.append(Spacer(1, 0.4 * inch))
-        footer_style = ParagraphStyle(
-            'SCFooter', parent=styles['Normal'],
-            fontSize=8, textColor=colors.grey, alignment=TA_CENTER
-        )
-        elements.append(Paragraph(
-            "BEST Executive Function Galaxy Assessment™ | Free ScoreCard | Confidential",
-            footer_style
-        ))
-        # AIMS Teaser (Item 7)
-        elements.append(Paragraph(
-            "Your full report includes your personalized AIMS for the BEST\u2122 intervention pathway.",
-            ParagraphStyle('AimsTeaser', parent=footer_style,
-                         fontSize=9, textColor=colors.HexColor('#4F46E5'), fontName='Helvetica-Bold')
-        ))
+        elements.append(SectionHeader(5, "Your Profile Across 4 Lenses",
+                                      accent_color=THEME['indigo']))
         elements.append(Spacer(1, 0.1 * inch))
-        # Updated CTA (Item 6)
-        elements.append(Paragraph(
-            "You've seen the surface. Now see the system.",
-            ParagraphStyle('CTALine', parent=footer_style,
-                         fontSize=10, textColor=colors.HexColor('#6366F1'), fontName='Helvetica-Oblique')
+        
+        from scoring_engine.pdf_theme import LENS_PALETTE
+        for key, lens_data in lens_teasers.items():
+            lp = LENS_PALETTE.get(key, {'accent': THEME['indigo'], 'label': key})
+            title = lens_data.get('title', lp['label'])
+            teaser = lens_data.get('teaser', '')
+            elements.append(CalloutBox(
+                title, teaser,
+                accent_color=lp['accent'], bg_color=THEME['gray_50'],
+            ))
+            elements.append(Spacer(1, 0.08 * inch))
+        
+        # ── FOOTER / CTA ──
+        elements.append(Spacer(1, 0.3 * inch))
+        elements.append(CalloutBox(
+            'Unlock Your Full Report',
+            'Your full report includes your personalized AIMS for the BEST\u2122 '
+            'intervention pathway. You\'ve seen the surface. Now see the system.',
+            accent_color=THEME['primary'], bg_color=THEME['primary_light'],
         ))
         
-        # Build PDF
-        doc.build(elements)
+        # Append the full Legal & Medical Disclaimer at the end of every PDF.
+        elements += _build_full_disclaimer_flowables()
+
+        # Build PDF with themed page template
+        doc.build(elements,
+                  onFirstPage=page_tpl.first_page,
+                  onLaterPages=page_tpl.later_pages)
         pdf_bytes = buffer.getvalue()
         buffer.close()
         
@@ -763,16 +809,90 @@ def generate_scorecard_pdf(full_output: dict) -> Optional[bytes]:
         return None
 
 
-def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = None) -> Optional[bytes]:
+# ---------------------------------------------------------------------------
+# Lens-section → interpretation slot mapping
+# ---------------------------------------------------------------------------
+# The Data Report PDF reads narrative copy from
+# `assessment_data["interpretation"]`, which is the *lens-neutral* baseline
+# generated once at assessment time.  When a paid lens-specific AI report
+# exists in `generated_reports`, its sections (keys defined in
+# `prompts.section_rules.LENS_REPORT_SECTIONS`) cover the same conceptual
+# slots but under different keys.  This map projects those keys onto the
+# interpretation-slot names the PDF expects, so each lens download actually
+# shows lens-tailored prose instead of the same baseline text everywhere.
+_LENS_SECTION_TO_INTERPRETATION = {
+    'galaxy_snapshot':     'executive_summary',
+    'galaxy_placement':    'quadrant_interpretation',
+    'bhp_analysis':        'load_interpretation',
+    'pei_bhp_interaction': 'pei_bhp_interpretation',
+    'strength_profile':    'strengths_analysis',
+    'growth_edges':        'growth_edges_analysis',
+    'aims_plan':           'aims_plan',
+    'cosmic_summary':      'cosmic_summary',
+}
+
+
+def _overlay_lens_sections(
+    interpretation: dict,
+    lens_sections: Optional[dict],
+    active_lens: Optional[str],
+) -> dict:
+    """Return a copy of `interpretation` with lens-specific narrative laid
+    over the baseline copy where available.
+
+    - Only keys that are non-empty in `lens_sections` are overlaid.
+    - The lens-exclusive section (e.g. `academic_performance_impact`) is
+      kept under its original key, since the PDF reads it directly.
+    - `aims_plan` may arrive as a string (lens AI generates a single
+      paragraph). The downstream PDF code expects a dict keyed by phase;
+      so when a string is returned we synthesize a single-phase dict so
+      the lens narrative still surfaces instead of being dropped.
+    """
+    if not lens_sections or not isinstance(lens_sections, dict):
+        return dict(interpretation or {})
+
+    merged = dict(interpretation or {})
+
+    for ls_key, interp_key in _LENS_SECTION_TO_INTERPRETATION.items():
+        val = lens_sections.get(ls_key)
+        if not val:
+            continue
+
+        if interp_key == 'aims_plan' and isinstance(val, str):
+            existing = merged.get('aims_plan') if isinstance(merged.get('aims_plan'), dict) else {}
+            merged['aims_plan'] = {**existing, 'awareness': val} if not existing else existing
+            continue
+
+        merged[interp_key] = val
+
+    # Preserve the lens-exclusive section under its native key so the
+    # exclusive-display block in the PDF picks it up.
+    if active_lens:
+        for k, v in lens_sections.items():
+            if k not in _LENS_SECTION_TO_INTERPRETATION and v:
+                merged.setdefault(k, v)
+
+    return merged
+
+
+def generate_pdf_report(
+    assessment_data: dict,
+    lens_override: Optional[str] = None,
+    lens_sections: Optional[dict] = None,
+) -> Optional[bytes]:
     """
     Generate a PDF report from assessment data.
-    
+
     Args:
         assessment_data: Complete assessment output JSON
-        lens_override: Optional lens to use for report generation (PERSONAL_LIFESTYLE, 
+        lens_override: Optional lens to use for report generation (PERSONAL_LIFESTYLE,
                       STUDENT_SUCCESS, PROFESSIONAL_LEADERSHIP, FAMILY_ECOSYSTEM, FULL_GALAXY).
                       If provided, overrides the original report_type in metadata.
-    
+        lens_sections: Optional dict of lens-specific AI sections (from the
+                      `generated_reports` row matching this lens). When
+                      provided, lens-tailored narrative replaces the baseline
+                      lens-neutral interpretation in the rendered PDF.
+
     Returns:
         PDF file as bytes, or None if generation fails
     """
@@ -786,32 +906,60 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
             PageBreak, Image, HRFlowable
         )
         from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+        from scoring_engine.pdf_theme import (
+            THEME, BESTPageTemplate, build_cover_page, get_theme_styles,
+            SectionHeader, CalloutBox, themed_table_style, make_rounded_bar,
+            make_donut_chart, score_color, format_date, LENS_PALETTE,
+        )
+        from scoring_engine.report_generator import LENS_DOMAIN_WEIGHTS, _apply_lens_weights
+
+        # ── Lens differentiation constants (Addendum Phase 3) ──
+        _LENS_SUBTITLE = {
+            'PERSONAL_LIFESTYLE': 'Your Executive Function Profile Through the Lens of Daily Life & Personal Systems',
+            'STUDENT_SUCCESS': 'Your Executive Function Profile Through the Lens of Academic Performance & Learning',
+            'PROFESSIONAL_LEADERSHIP': 'Your Executive Function Profile Through the Lens of Workplace Execution & Productivity',
+            'FAMILY_ECOSYSTEM': 'Your Executive Function Profile Through the Lens of Family & Relational Systems',
+            'FULL_GALAXY': 'Complete Cross-Environmental Executive Function Synthesis',
+        }
+        _LENS_EXCLUSIVE_DISPLAY = {
+            'STUDENT_SUCCESS':         ('academic_performance_impact',    'Academic Performance Impact\u2122', '#F59E0B'),
+            'PERSONAL_LIFESTYLE':      ('lifestyle_stability_index',      'Lifestyle Stability Index\u2122',   '#10B981'),
+            'PROFESSIONAL_LEADERSHIP': ('execution_productivity_profile', 'Execution & Productivity Profile\u2122', '#3B82F6'),
+            'FAMILY_ECOSYSTEM':        ('family_system_dynamics',         'Family System Dynamics\u2122',      '#EC4899'),
+        }
+        # Maps raw domain names → composite weight keys (Addendum Phase 3 §3)
+        _DOMAIN_TO_WEIGHT_KEY = {
+            'EXECUTIVE_FUNCTION_SKILLS': 'action_follow_through',
+            'BEHAVIORAL_PATTERNS':       'action_follow_through',
+            'COGNITIVE_CONTROL':         'focus_drive',
+            'MOTIVATIONAL_SYSTEMS':      'focus_drive',
+            'EMOTIONAL_REGULATION':      'emotional_regulation',
+            'INTERNAL_STATE_FACTORS':    'emotional_regulation',
+            'ENVIRONMENTAL_DEMANDS':     'life_load',
+        }
+        _LENS_EMPHASIS_LABEL = {
+            'PERSONAL_LIFESTYLE': 'Personal / Lifestyle Emphasis',
+            'STUDENT_SUCCESS': 'Student / Academic Emphasis',
+            'PROFESSIONAL_LEADERSHIP': 'Professional / Leadership Emphasis',
+            'FAMILY_ECOSYSTEM': 'Family / Ecosystem Emphasis',
+        }
         
         # Create PDF buffer
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter,
                                rightMargin=72, leftMargin=72,
-                               topMargin=72, bottomMargin=18)
+                               topMargin=48, bottomMargin=42)
         
         # Container for PDF elements
         elements = []
         
         # Styles
         styles = getSampleStyleSheet()
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=24,
-            textColor=colors.HexColor('#4F46E5'),
-            spaceAfter=30,
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
-        )
         heading_style = ParagraphStyle(
             'CustomHeading',
             parent=styles['Heading2'],
             fontSize=16,
-            textColor=colors.HexColor('#312E81'),
+            textColor=colors.HexColor(THEME['gray_900']),
             spaceAfter=12,
             spaceBefore=12,
             fontName='Helvetica-Bold'
@@ -819,11 +967,13 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
         body_style = ParagraphStyle(
             'CustomBody',
             parent=styles['BodyText'],
-            fontSize=11,
+            fontSize=10.5,
             alignment=TA_JUSTIFY,
-            spaceAfter=12,
-            leading=16
+            spaceAfter=10,
+            leading=15.5,
+            textColor=colors.HexColor(THEME['gray_700']),
         )
+        ts = get_theme_styles(THEME['primary'])
         
         # Extract data
         metadata = assessment_data.get('metadata', {})
@@ -832,39 +982,29 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
         load_framework = assessment_data.get('load_framework', {})
         domains = assessment_data.get('domains', [])
         summary = assessment_data.get('summary', {})
-        interpretation = assessment_data.get('interpretation', {})
-        
-        # Title Page
-        elements.append(Spacer(1, 0.5*inch))
-        elements.append(Paragraph("BEST Executive Function", title_style))
-        elements.append(Paragraph("Galaxy Assessment™", title_style))
-        elements.append(Spacer(1, 0.3*inch))
-        
-        # Archetype
-        archetype_name = archetype.get('archetype_id', 'Unknown').replace('_', ' ')
-        elements.append(Paragraph(f"<b>{archetype_name}</b>", heading_style))
-        elements.append(Paragraph(archetype.get('description', ''), body_style))
-        elements.append(Spacer(1, 0.2*inch))
+        baseline_interpretation = assessment_data.get('interpretation', {}) or {}
+        # When a lens-specific AI report exists, overlay its narrative onto
+        # the baseline so each lens download shows lens-tailored copy
+        # (Executive Summary, Strengths, Growth Edges, etc.) instead of the
+        # lens-neutral text that was generated once at assessment time.
+        interpretation = _overlay_lens_sections(
+            baseline_interpretation, lens_sections, lens_override
+        )
         
         # Report Info - fetch user name
-        # Use lens_override if provided, otherwise use original report_type
         original_report_type = metadata.get('report_type', '')
         active_lens = lens_override if lens_override else original_report_type
         report_type = active_lens.replace('_', ' ').title()
+        is_lens_specific = active_lens in LENS_DOMAIN_WEIGHTS
         
         timestamp = metadata.get('timestamp', datetime.now().isoformat())
-        date_str = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).strftime('%B %d, %Y at %I:%M %p')
+        date_str = format_date(timestamp)
         
-        # Fetch user name from users table
         user_id = metadata.get('user_email') or metadata.get('user_id', 'N/A')
         user_name = _get_user_name(user_id)
         if len(user_name) > 40:
             user_name = user_name[:37] + '...'
         
-        # Professional header with divider
-        elements.append(HRFlowable(width="100%", thickness=3, color=colors.HexColor('#4F46E5'), spaceAfter=16))
-        
-        # Display lens-specific report type
         lens_display_name = {
             'PERSONAL_LIFESTYLE': 'Personal / Lifestyle',
             'STUDENT_SUCCESS': 'Student Success',
@@ -873,82 +1013,136 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
             'FULL_GALAXY': 'Full Galaxy Report',
         }.get(active_lens, report_type)
         
-        info_data = [
-            ['Prepared for:', user_name],
-            ['Report Date:', date_str],
-            ['Report Lens:', lens_display_name],
-            ['Assessment Type:', 'Full Galaxy Report (Paid)'],
-        ]
-        info_table = Table(info_data, colWidths=[2*inch, 4*inch])
-        info_table.setStyle(TableStyle([
-            ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
-            ('FONTNAME', (1,0), (1,-1), 'Helvetica'),
-            ('FONTSIZE', (0,0), (-1,-1), 11),
-            ('TEXTCOLOR', (0,0), (0,-1), colors.HexColor('#312E81')),
-            ('TEXTCOLOR', (1,0), (1,-1), colors.HexColor('#1F2937')),
-            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 10),
-            ('TOPPADDING', (0,0), (-1,-1), 4),
-        ]))
-        elements.append(info_table)
-        elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#E5E7EB'), spaceAfter=20))
+        lp = LENS_PALETTE.get(active_lens, {'accent': THEME['primary'], 'label': lens_display_name})
+        lens_accent = lp['accent']
+        
+        page_tpl = BESTPageTemplate(accent_color=lens_accent, lens_label=lens_display_name)
+        archetype_name = archetype.get('archetype_id', 'Unknown').replace('_', ' ')
+        
+        # ── Lens-specific cover subtitle ──
+        cover_subtitle = _LENS_SUBTITLE.get(
+            active_lens,
+            archetype.get('description', 'Full Galaxy Assessment Report'),
+        )
+        
+        # ── Cover Page ──
+        elements += build_cover_page(
+            report_title=(
+                lens_display_name.upper() if lens_display_name.lower().endswith('report')
+                else f'{lens_display_name} Report'.upper()
+            ),
+            report_subtitle=cover_subtitle,
+            user_name=user_name,
+            date_str=date_str,
+            lens_label=lens_display_name,
+            accent_color=lens_accent,
+            extra_lines=[
+                ('Archetype:', archetype_name.title()),
+                ('Assessment Type:', f'{lens_display_name} (Paid)'),
+            ],
+        )
+        elements += _build_short_disclaimer_flowable()
         elements.append(PageBreak())
+
+        sec_num = 1
         
         # Executive Summary
         if interpretation and interpretation.get('executive_summary'):
-            elements.append(Paragraph("Executive Summary", heading_style))
-            elements.append(Paragraph(interpretation['executive_summary'], body_style))
+            elements.append(SectionHeader(sec_num, "Executive Summary",
+                                          accent_color=THEME['primary']))
+            elements.append(Spacer(1, 0.06 * inch))
+            sec_num += 1
+            elements.append(CalloutBox(
+                'Executive Summary', interpretation['executive_summary'],
+                accent_color=THEME['primary'], bg_color=THEME['primary_light'],
+            ))
             elements.append(Spacer(1, 0.2*inch))
         
-        # Construct Scores
-        elements.append(Paragraph("Construct Scores", heading_style))
+        # Construct Scores with donut charts
+        elements.append(SectionHeader(sec_num, "Construct Scores",
+                                      accent_color=THEME['primary']))
+        elements.append(Spacer(1, 0.06 * inch))
+        sec_num += 1
         pei_score = construct_scores.get('PEI_score', 0)
         bhp_score = construct_scores.get('BHP_score', 0)
         
-        scores_data = [
-            ['Construct', 'Score', 'Percentage'],
-            ['PEI (Environmental Demand)', f'{pei_score:.3f}', f'{int(pei_score * 100)}%'],
-            ['BHP (Internal Capacity)', f'{bhp_score:.3f}', f'{int(bhp_score * 100)}%'],
-        ]
-        scores_table = Table(scores_data, colWidths=[3*inch, 1.5*inch, 1.5*inch])
-        scores_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4F46E5')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        pei_donut = make_donut_chart(
+            value=pei_score * 100, max_value=100, size=80, ring_width=12,
+            fill_color=THEME['red'], label='PEI (Demand)',
+        )
+        bhp_donut = make_donut_chart(
+            value=bhp_score * 100, max_value=100, size=80, ring_width=12,
+            fill_color=THEME['blue'], label='BHP (Capacity)',
+        )
+        donut_row = Table([[bhp_donut, pei_donut]],
+                          colWidths=[3 * inch, 3 * inch])
+        donut_row.setStyle(TableStyle([
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F3F4F6')]),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ]))
+        elements.append(donut_row)
+        elements.append(Spacer(1, 0.1 * inch))
+        
+        scores_data = [
+            ['Construct', 'Score', 'Level'],
+            [
+                'PEI (Environmental Demand)',
+                f'{pei_score:.3f}',
+                make_rounded_bar(pei_score * 100, width_inch=1.5, height_pt=10,
+                                 fill_color=THEME['red'], show_label=True),
+            ],
+            [
+                'BHP (Internal Capacity)',
+                f'{bhp_score:.3f}',
+                make_rounded_bar(bhp_score * 100, width_inch=1.5, height_pt=10,
+                                 fill_color=THEME['blue'], show_label=True),
+            ],
+        ]
+        scores_table = Table(scores_data, colWidths=[2.5*inch, 1.0*inch, 2.5*inch])
+        scores_table.setStyle(TableStyle(themed_table_style(THEME['primary'])))
         elements.append(scores_table)
         elements.append(Spacer(1, 0.2*inch))
         
         # Load Framework
-        elements.append(Paragraph("Load Framework", heading_style))
+        elements.append(SectionHeader(sec_num, "Load Framework",
+                                      accent_color=THEME['amber']))
+        elements.append(Spacer(1, 0.06 * inch))
+        sec_num += 1
         quadrant = load_framework.get('quadrant', '').replace('_', ' ')
         load_state = load_framework.get('load_state', '').replace('_', ' ')
         load_balance = load_framework.get('load_balance', 0)
         
-        framework_text = f"""
-        <b>Quadrant:</b> {quadrant}<br/>
-        <b>Load State:</b> {load_state}<br/>
-        <b>Load Balance:</b> {load_balance:.3f} (BHP - PEI)
-        """
-        elements.append(Paragraph(framework_text, body_style))
-        elements.append(Spacer(1, 0.2*inch))
+        lb_color = THEME['green'] if load_balance >= 0 else THEME['red']
+        fw_data = [
+            ['Quadrant', 'Load State', 'Load Balance'],
+            [quadrant.title(), load_state.title(), f'{load_balance:+.3f}'],
+        ]
+        fw_table = Table(fw_data, colWidths=[2.0*inch, 2.0*inch, 2.0*inch])
+        fw_table.setStyle(TableStyle(
+            themed_table_style(THEME['amber']) + [
+                ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 1), (-1, 1), 11),
+                ('TEXTCOLOR', (2, 1), (2, 1), colors.HexColor(lb_color)),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ]
+        ))
+        elements.append(fw_table)
+        elements.append(Spacer(1, 0.15*inch))
         
         # PEI × BHP Interpretation
         if interpretation and interpretation.get('pei_bhp_interpretation'):
-            elements.append(Paragraph(interpretation['pei_bhp_interpretation'], body_style))
+            elements.append(CalloutBox(
+                'PEI \u00d7 BHP Interpretation',
+                interpretation['pei_bhp_interpretation'],
+                accent_color=THEME['amber'], bg_color=THEME['amber_light'],
+            ))
             elements.append(Spacer(1, 0.2*inch))
         
         # Summary (Strengths & Growth Edges)
-        # Filter Environmental Demands from strengths (it's pressure, not capacity)
-        elements.append(Paragraph("Summary", heading_style))
+        elements.append(SectionHeader(sec_num, "Strengths & Growth Edges",
+                                      accent_color=THEME['green']))
+        elements.append(Spacer(1, 0.06 * inch))
+        sec_num += 1
         
         strengths = [s for s in summary.get('top_strengths', []) if s != 'ENVIRONMENTAL_DEMANDS']
         growth_edges = summary.get('growth_edges', [])
@@ -981,49 +1175,112 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
         elements.append(PageBreak())
         
         # Domain Profiles — Internal Capacity Domains
-        elements.append(Paragraph("Domain Profiles — Internal Capacity", heading_style))
+        section_title_suffix = (
+            f' \u2014 {_LENS_EMPHASIS_LABEL[active_lens]}'
+            if is_lens_specific else ' \u2014 Internal Capacity'
+        )
+        elements.append(SectionHeader(sec_num, f"Domain Profiles{section_title_suffix}",
+                                      accent_color=lens_accent if is_lens_specific else THEME['primary']))
+        elements.append(Spacer(1, 0.06 * inch))
+        sec_num += 1
         
         capacity_domains = [d for d in domains if d['name'] != 'ENVIRONMENTAL_DEMANDS']
         env_domains = [d for d in domains if d['name'] == 'ENVIRONMENTAL_DEMANDS']
         
-        domain_data = [['Domain', 'Score', 'Classification', 'Rank']]
-        for domain in capacity_domains:
-            domain_data.append([
-                domain['name'].replace('_', ' '),
-                f"{domain['score']:.3f}",
-                domain['classification'],
-                f"#{domain['rank']}"
-            ])
+        # ── Compute lens-weighted emphasis scores (Addendum Phase 3 §3) ──
+        # Weights shift interpretation emphasis — raw scores are never altered.
+        if is_lens_specific:
+            elements.append(CalloutBox(
+                f'{lens_display_name} Lens Active',
+                f'Domain emphasis scores are adjusted through the {lens_display_name} lens. '
+                f'Raw scores remain unchanged — emphasis reflects how this lens weighs '
+                f'each domain for your environment.',
+                accent_color=lens_accent, bg_color=THEME.get(
+                    {'PERSONAL_LIFESTYLE': 'green_light', 'STUDENT_SUCCESS': 'primary_light',
+                     'PROFESSIONAL_LEADERSHIP': 'blue_light', 'FAMILY_ECOSYSTEM': 'pink_light',
+                    }.get(active_lens, 'primary_light'), '#F5F3FF'),
+            ))
+            elements.append(Spacer(1, 0.08 * inch))
+            
+            weights = LENS_DOMAIN_WEIGHTS[active_lens]
+            
+            def _emphasis_score(raw: float, weight_key: str) -> float:
+                w = weights.get(weight_key, 1.0)
+                x = max(0.0, min(1.0, raw))
+                if w >= 1.0:
+                    return round(1.0 - (1.0 - x) ** w, 3)
+                return round(x ** (1.0 / max(w, 1e-6)), 3)
+            
+            # Annotate each domain with its emphasis score
+            for d in capacity_domains:
+                wk = _DOMAIN_TO_WEIGHT_KEY.get(d['name'])
+                if wk:
+                    d['emphasis_score'] = _emphasis_score(d['score'], wk)
+                    d['weight_key'] = wk
+                    d['weight_val'] = weights.get(wk, 1.0)
+                else:
+                    d['emphasis_score'] = d['score']
+                    d['weight_key'] = None
+                    d['weight_val'] = 1.0
+            
+            # Sort by emphasis score descending (lens-focused ordering)
+            capacity_domains.sort(key=lambda d: d['emphasis_score'], reverse=True)
+            
+            domain_data = [['Domain', 'Raw', 'Emphasis', 'Level', 'Wt']]
+            for domain in capacity_domains:
+                sc = domain['score']
+                esc = domain['emphasis_score']
+                wv = domain['weight_val']
+                domain_data.append([
+                    domain['name'].replace('_', ' '),
+                    f"{sc:.3f}",
+                    f"{esc:.3f}",
+                    make_rounded_bar(esc * 100, width_inch=0.95, height_pt=10,
+                                     fill_color=score_color(esc * 100), show_label=False),
+                    f"\u00d7{wv:.1f}",
+                ])
+            # Column widths tuned so the "Emphasis" header (~58pt at 11pt
+            # bold + cell padding) has breathing room and doesn't visually
+            # crash into the Level column.
+            domain_table = Table(
+                domain_data,
+                colWidths=[1.9*inch, 0.55*inch, 0.95*inch, 1.4*inch, 0.6*inch],
+            )
+        else:
+            domain_data = [['Domain', 'Score', 'Level', 'Rank']]
+            for domain in capacity_domains:
+                sc = domain['score']
+                domain_data.append([
+                    domain['name'].replace('_', ' '),
+                    f"{sc:.3f}",
+                    make_rounded_bar(sc * 100, width_inch=1.2, height_pt=10,
+                                     fill_color=score_color(sc * 100), show_label=False),
+                    f"#{domain['rank']}"
+                ])
+            domain_table = Table(domain_data, colWidths=[2.2*inch, 0.8*inch, 1.8*inch, 0.7*inch])
         
-        domain_table = Table(domain_data, colWidths=[2.5*inch, 1.2*inch, 1.5*inch, 0.8*inch])
-        domain_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4F46E5')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F3F4F6')]),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-        ]))
+        domain_table.setStyle(TableStyle(
+            themed_table_style(lens_accent if is_lens_specific else THEME['primary']) + [
+                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ]
+        ))
         elements.append(domain_table)
         elements.append(Spacer(1, 0.2*inch))
         
         # Environmental Demands — Separated as External Pressure
         if env_domains:
-            elements.append(Paragraph("Environmental Demands — External Pressure", heading_style))
-            env_note_style = ParagraphStyle('EnvNote', parent=body_style, fontSize=10,
-                                            textColor=colors.HexColor('#DC2626'), leading=14)
-            elements.append(Paragraph(
-                "Environmental Demands represents external pressure on your system, not internal capacity. "
-                "A high score indicates high load/strain, not high performance.",
-                env_note_style
+            elements.append(SectionHeader(sec_num, "Environmental Demands \u2014 External Pressure",
+                                          accent_color=THEME['red']))
+            elements.append(Spacer(1, 0.06 * inch))
+            sec_num += 1
+            elements.append(CalloutBox(
+                'Important Note',
+                'Environmental Demands represents external pressure on your system, not internal capacity. '
+                'A high score indicates high load/strain, not high performance.',
+                accent_color=THEME['red'], bg_color=THEME['red_light'],
             ))
+            elements.append(Spacer(1, 0.08 * inch))
             env_data = [['Domain', 'Score', 'Load Level', 'Rank']]
             for domain in env_domains:
                 score = domain['score']
@@ -1035,22 +1292,7 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
                     f"#{domain['rank']}"
                 ])
             env_table = Table(env_data, colWidths=[2.5*inch, 1.2*inch, 1.5*inch, 0.8*inch])
-            env_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#DC2626')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 11),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#FCA5A5')),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 1), (-1, -1), 9),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#FEF2F2')),
-                ('LEFTPADDING', (0, 0), (-1, -1), 8),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-            ]))
-            elements.append(env_table)
+            env_table.setStyle(TableStyle(themed_table_style(THEME['red'])))
         elements.append(Spacer(1, 0.2*inch))
         
         # Applied Executive Functioning Domains (Phase 4) — Full Report
@@ -1411,6 +1653,114 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
                 
                 elements.append(Spacer(1, 0.25*inch))
         
+        # ── Lens-Exclusive Section (Addendum Phase 3 §4) ──
+        # Each lens gets ONE unique section not present in other lenses.
+        if is_lens_specific and active_lens in _LENS_EXCLUSIVE_DISPLAY:
+            excl_key, excl_title, excl_color = _LENS_EXCLUSIVE_DISPLAY[active_lens]
+            elements.append(PageBreak())
+            elements.append(SectionHeader(sec_num, excl_title,
+                                          accent_color=excl_color))
+            elements.append(Spacer(1, 0.06 * inch))
+            sec_num += 1
+
+            # Pull exclusive content from AI report if available, or from
+            # interpretation, or generate a lens-framed summary from the
+            # domain weighting data.
+            excl_content = (
+                interpretation.get(excl_key)
+                or interpretation.get('lens_exclusive_narrative')
+            )
+
+            if excl_content:
+                for para in str(excl_content).strip().split('\n\n'):
+                    clean = para.strip().replace('\n', ' ')
+                    if clean:
+                        elements.append(Paragraph(clean, body_style))
+                elements.append(Spacer(1, 0.1 * inch))
+            else:
+                # Fallback: generate a structured summary from the domain data
+                _excl_focus = {
+                    'STUDENT_SUCCESS': [
+                        ('Study Efficiency', 'How EF patterns affect study habits and retention'),
+                        ('Assignment Initiation', 'Patterns around starting academic tasks'),
+                        ('Deadline Behavior', 'How your system responds to academic deadlines'),
+                        ('Learning Under Pressure', 'Performance during exams and high-stakes situations'),
+                    ],
+                    'PERSONAL_LIFESTYLE': [
+                        ('Routine Consistency', 'Ability to maintain daily rhythms and structure'),
+                        ('Habit Strength', 'How well positive habits hold under load'),
+                        ('Identity Alignment', 'Whether daily actions match personal values and goals'),
+                        ('Daily Structure', 'Overall organization of your personal system'),
+                    ],
+                    'PROFESSIONAL_LEADERSHIP': [
+                        ('Task Completion', 'How projects move from initiation to finish'),
+                        ('Workflow Efficiency', 'Ability to manage multi-step processes'),
+                        ('Prioritization', 'How you allocate focus across competing demands'),
+                        ('Performance Under Pressure', 'Execution quality when stakes rise'),
+                    ],
+                    'FAMILY_ECOSYSTEM': [
+                        ('Role Clarity', 'How well you manage expectations within family roles'),
+                        ('Co-Regulation', 'Ability to regulate alongside others in shared environments'),
+                        ('Communication Patterns', 'How EF load affects relational communication'),
+                        ('Engagement vs Withdrawal', 'Patterns of connection or disconnection under load'),
+                    ],
+                }
+                focus_items = _excl_focus.get(active_lens, [])
+                if focus_items:
+                    # Build the lens emphasis composite scores
+                    domain_score_lookup = {d['name']: d['score'] for d in domains}
+                    action_ft = (
+                        domain_score_lookup.get('EXECUTIVE_FUNCTION_SKILLS', 0.5) +
+                        domain_score_lookup.get('BEHAVIORAL_PATTERNS', 0.5)
+                    ) / 2
+                    focus_drive = (
+                        domain_score_lookup.get('COGNITIVE_CONTROL', 0.5) +
+                        domain_score_lookup.get('MOTIVATIONAL_SYSTEMS', 0.5)
+                    ) / 2
+                    emotional_reg = (
+                        domain_score_lookup.get('EMOTIONAL_REGULATION', 0.5) +
+                        domain_score_lookup.get('INTERNAL_STATE_FACTORS', 0.5)
+                    ) / 2
+                    life_load = domain_score_lookup.get('ENVIRONMENTAL_DEMANDS', 0.5)
+
+                    w_action, w_focus, w_emo, w_load = _apply_lens_weights(
+                        action_ft, focus_drive, emotional_reg, life_load, active_lens,
+                    )
+
+                    # Composite donut chart for the exclusive section
+                    composite_val = (w_action + w_focus + w_emo + (1 - w_load)) / 4
+                    donut = make_donut_chart(
+                        value=composite_val * 100, max_value=100, size=90, ring_width=14,
+                        fill_color=excl_color, label=f'{lens_display_name} Composite',
+                    )
+                    donut_tbl = Table([[donut]], colWidths=[6 * inch])
+                    donut_tbl.setStyle(TableStyle([
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ]))
+                    elements.append(donut_tbl)
+                    elements.append(Spacer(1, 0.1 * inch))
+
+                    # Focus area breakdown
+                    for area_title, area_desc in focus_items:
+                        elements.append(Paragraph(
+                            f'<font color="{excl_color}"><b>{area_title}</b></font>',
+                            ParagraphStyle('ExclArea', parent=body_style, fontSize=11, spaceAfter=2),
+                        ))
+                        elements.append(Paragraph(area_desc, body_style))
+                    elements.append(Spacer(1, 0.1 * inch))
+
+                    elements.append(CalloutBox(
+                        f'{excl_title} \u2014 Key Composites',
+                        f'Action/Follow-Through: {w_action:.2f}  \u2022  '
+                        f'Focus/Drive: {w_focus:.2f}  \u2022  '
+                        f'Emotional Regulation: {w_emo:.2f}  \u2022  '
+                        f'Life Load (inverted): {1 - w_load:.2f}',
+                        accent_color=excl_color,
+                        bg_color='#F9FAFB',
+                    ))
+
+            elements.append(Spacer(1, 0.2 * inch))
+
         elements.append(PageBreak())
         
         # Interpretation Sections
@@ -1489,22 +1839,13 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
             elements.append(Paragraph("Cosmic Summary", heading_style))
             elements.append(Paragraph(interpretation['cosmic_summary'], cosmic_style))
         
-        # Footer
-        elements.append(Spacer(1, 0.5*inch))
-        footer_style = ParagraphStyle(
-            'Footer',
-            parent=styles['Normal'],
-            fontSize=8,
-            textColor=colors.grey,
-            alignment=TA_CENTER
-        )
-        elements.append(Paragraph(
-            "BEST Executive Function Galaxy Assessment™ | Confidential Report",
-            footer_style
-        ))
-        
-        # Build PDF
-        doc.build(elements)
+        # Append the full Legal & Medical Disclaimer at the end of every PDF.
+        elements += _build_full_disclaimer_flowables()
+
+        # Build PDF with themed page template
+        doc.build(elements,
+                  onFirstPage=page_tpl.first_page,
+                  onLaterPages=page_tpl.later_pages)
         
         # Get PDF bytes
         pdf_bytes = buffer.getvalue()
@@ -1514,7 +1855,7 @@ def generate_pdf_report(assessment_data: dict, lens_override: Optional[str] = No
         return pdf_bytes
         
     except Exception as e:
-        logger.error(f"Failed to generate PDF: {e}")
+        logger.error(f"Failed to generate PDF: {e}", exc_info=True)
         return None
 
 
@@ -1612,102 +1953,71 @@ def generate_ai_report_pdf(
             PageBreak, HRFlowable,
         )
         from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
+        from scoring_engine.pdf_theme import (
+            THEME, LENS_PALETTE, BESTPageTemplate, build_cover_page,
+            get_theme_styles, SectionHeader, CalloutBox, format_date,
+        )
+
+        is_cosmic = report_type == 'FULL_GALAXY'
+        section_order = _COSMIC_SECTION_ORDER if is_cosmic else _get_lens_section_order(report_type)
+        lens_label, lens_color = _LENS_DISPLAY.get(report_type, (report_type.replace('_', ' ').title(), '#6366F1'))
+        report_label = 'Cosmic Integration Report' if is_cosmic else f'{lens_label} Report'
 
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer, pagesize=letter,
             rightMargin=72, leftMargin=72,
-            topMargin=72, bottomMargin=36,
+            topMargin=48, bottomMargin=42,
         )
 
-        styles = getSampleStyleSheet()
+        ts = get_theme_styles(lens_color)
         elements = []
-
-        is_cosmic = report_type == 'FULL_GALAXY'
-        section_order = _COSMIC_SECTION_ORDER if is_cosmic else _get_lens_section_order(report_type)
-        lens_label, lens_color = _LENS_DISPLAY.get(report_type, (report_type.replace('_', ' ').title(), '#6366F1'))
-
-        # ── Styles ──
-        title_style = ParagraphStyle(
-            'AIRTitle', parent=styles['Heading1'],
-            fontSize=22, textColor=colors.HexColor(lens_color),
-            spaceAfter=6, alignment=TA_CENTER, fontName='Helvetica-Bold',
-        )
-        subtitle_style = ParagraphStyle(
-            'AIRSub', parent=styles['Normal'],
-            fontSize=11, textColor=colors.HexColor('#6B7280'),
-            spaceAfter=16, alignment=TA_CENTER,
-        )
-        section_title_style = ParagraphStyle(
-            'AIRSecTitle', parent=styles['Heading2'],
-            fontSize=14, textColor=colors.HexColor('#1F2937'),
-            spaceAfter=8, spaceBefore=16, fontName='Helvetica-Bold',
-        )
-        body_style = ParagraphStyle(
-            'AIRBody', parent=styles['BodyText'],
-            fontSize=10.5, alignment=TA_JUSTIFY,
-            spaceAfter=10, leading=15, textColor=colors.HexColor('#374151'),
-        )
-        footer_style = ParagraphStyle(
-            'AIRFooter', parent=styles['Normal'],
-            fontSize=8, textColor=colors.grey, alignment=TA_CENTER,
-        )
-
-        # ── Title Page ──
-        elements.append(Spacer(1, 0.4 * inch))
-        elements.append(Paragraph(
-            "BEST Executive Function Galaxy Assessment\u2122",
-            ParagraphStyle('AIRSmall', parent=styles['Normal'],
-                           fontSize=10, textColor=colors.HexColor('#6B7280'),
-                           spaceAfter=8, alignment=TA_CENTER),
-        ))
-        report_label = 'Cosmic Integration Report' if is_cosmic else f'{lens_label} Report'
-        elements.append(Paragraph(report_label, title_style))
-        elements.append(Paragraph(
-            'AI-Generated Executive Function Narrative',
-            subtitle_style,
-        ))
-
-        elements.append(HRFlowable(
-            width="100%", thickness=2,
-            color=colors.HexColor(lens_color), spaceAfter=12,
-        ))
+        page_tpl = BESTPageTemplate(accent_color=lens_color, lens_label=lens_label)
 
         # Header info
         user_display = user_id or 'N/A'
         if user_display and len(user_display) > 40:
             user_display = user_display[:37] + '...'
+        date_str = format_date(generated_at)
 
-        ts = generated_at or datetime.now().isoformat()
-        try:
-            date_str = datetime.fromisoformat(
-                ts.replace('Z', '+00:00')
-            ).strftime('%B %d, %Y at %I:%M %p')
-        except Exception:
-            date_str = ts[:19]
+        # ── Cover Page ──
+        elements += build_cover_page(
+            report_title=report_label,
+            report_subtitle='AI-Generated Executive Function Narrative',
+            user_name=user_display,
+            date_str=date_str,
+            lens_label=lens_label,
+            accent_color=lens_color,
+            extra_lines=[('Sections:', f'{len(section_order)} sections')],
+        )
+        elements += _build_short_disclaimer_flowable()
+        elements.append(PageBreak())
 
-        info_data = [
-            ['Prepared for:', user_display],
-            ['Report Date:', date_str],
-            ['Report Lens:', lens_label],
-            ['Sections:', f'{len(section_order)} sections'],
-        ]
-        info_table = Table(info_data, colWidths=[1.8 * inch, 4.2 * inch])
-        info_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#312E81')),
-            ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#1F2937')),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ]))
-        elements.append(info_table)
-        elements.append(HRFlowable(
-            width="100%", thickness=1,
-            color=colors.HexColor('#E5E7EB'), spaceAfter=8,
-        ))
+        # ── Table of Contents ──
+        elements.append(Paragraph('Table of Contents', ts['heading']))
+        elements.append(Spacer(1, 0.1 * inch))
+        toc_rows = []
+        for idx, (key, display_title, accent) in enumerate(section_order):
+            content = report_sections.get(key, '')
+            status = '\u2713' if content and content.strip() else '\u2014'
+            toc_rows.append([
+                Paragraph(f'<font color="{accent}"><b>{idx + 1}</b></font>',
+                          ParagraphStyle('TOCNum', parent=ts['body'], fontSize=9,
+                                         alignment=TA_CENTER)),
+                Paragraph(f'<font color="{accent}">{display_title}</font>',
+                          ParagraphStyle('TOCTitle', parent=ts['body'], fontSize=9)),
+                Paragraph(f'<font color="{THEME["green"]}">{status}</font>',
+                          ParagraphStyle('TOCStat', parent=ts['body'], fontSize=9,
+                                         alignment=TA_CENTER)),
+            ])
+        if toc_rows:
+            from scoring_engine.pdf_theme import themed_table_style
+            toc_table = Table(
+                [['#', 'Section', 'Status']] + [[r[0], r[1], r[2]] for r in toc_rows],
+                colWidths=[0.5 * inch, 4.8 * inch, 0.7 * inch],
+            )
+            toc_table.setStyle(TableStyle(themed_table_style(lens_color)))
+            elements.append(toc_table)
         elements.append(PageBreak())
 
         # ── Sections ──
@@ -1716,30 +2026,16 @@ def generate_ai_report_pdf(
             if not content or not content.strip():
                 continue
 
-            # Section number badge + title
-            num_label = f'Section {idx + 1}'
-            elements.append(Paragraph(
-                f'<font color="{accent}" size="8">{num_label}</font>',
-                ParagraphStyle(f'AIRNum{idx}', parent=styles['Normal'],
-                               fontSize=8, spaceBefore=12, spaceAfter=2),
-            ))
-            elements.append(Paragraph(
-                f'<font color="{accent}">{display_title}</font>',
-                section_title_style,
-            ))
-
-            # Accent bar
-            elements.append(HRFlowable(
-                width="30%", thickness=2,
-                color=colors.HexColor(accent), spaceAfter=8,
-            ))
+            # Themed section header with numbered badge
+            elements.append(SectionHeader(idx + 1, display_title, accent_color=accent))
+            elements.append(Spacer(1, 0.08 * inch))
 
             # Body paragraphs — split on double newlines
             paragraphs = content.strip().split('\n\n')
             for para in paragraphs:
                 clean = para.strip().replace('\n', ' ')
                 if clean:
-                    elements.append(Paragraph(clean, body_style))
+                    elements.append(Paragraph(clean, ts['body']))
 
             elements.append(Spacer(1, 0.15 * inch))
 
@@ -1749,25 +2045,20 @@ def generate_ai_report_pdf(
 
         # ── Validation badge ──
         elements.append(Spacer(1, 0.3 * inch))
-        elements.append(HRFlowable(
-            width="100%", thickness=1,
-            color=colors.HexColor('#D1FAE5'), spaceAfter=8,
-        ))
-        elements.append(Paragraph(
-            f'\u2713 Report Quality Verified \u2014 All {len(section_order)} sections present '
-            f'\u2022 Language compliance checked \u2022 AIMS structure verified',
-            ParagraphStyle('AIRBadge', parent=styles['Normal'],
-                           fontSize=9, textColor=colors.HexColor('#059669'),
-                           alignment=TA_CENTER, spaceAfter=16),
+        elements.append(CalloutBox(
+            '\u2713 Report Quality Verified',
+            f'All {len(section_order)} sections present \u2022 '
+            f'Language compliance checked \u2022 AIMS structure verified',
+            accent_color=THEME['green'], bg_color=THEME['green_light'],
         ))
 
-        # ── Footer ──
-        elements.append(Paragraph(
-            f"BEST Executive Function Galaxy Assessment\u2122 | {report_label} | Confidential",
-            footer_style,
-        ))
+        # Append the full Legal & Medical Disclaimer at the end of every PDF.
+        elements += _build_full_disclaimer_flowables()
 
-        doc.build(elements)
+        # Build with themed page template
+        doc.build(elements,
+                  onFirstPage=page_tpl.first_page,
+                  onLaterPages=page_tpl.later_pages)
         pdf_bytes = buffer.getvalue()
         buffer.close()
 
@@ -1807,89 +2098,69 @@ def generate_cosmic_dashboard_pdf(
             PageBreak, HRFlowable,
         )
         from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+        from scoring_engine.pdf_theme import (
+            THEME, BESTPageTemplate, build_cover_page, get_theme_styles,
+            SectionHeader, CalloutBox, themed_table_style, make_rounded_bar,
+            score_color, format_date,
+        )
 
+        accent = THEME['purple']
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             buffer, pagesize=letter,
             rightMargin=72, leftMargin=72,
-            topMargin=72, bottomMargin=36,
+            topMargin=48, bottomMargin=42,
         )
 
-        styles = getSampleStyleSheet()
+        ts = get_theme_styles(accent)
         elements = []
+        page_tpl = BESTPageTemplate(accent_color=accent, lens_label='Cosmic Dashboard')
 
-        title_style = ParagraphStyle(
-            'CosmicTitle', parent=styles['Heading1'],
-            fontSize=22, textColor=colors.HexColor('#4F46E5'),
-            spaceAfter=6, alignment=TA_CENTER, fontName='Helvetica-Bold',
-        )
-        subtitle_style = ParagraphStyle(
-            'CosmicSub', parent=styles['Normal'],
-            fontSize=11, textColor=colors.HexColor('#6B7280'),
-            spaceAfter=16, alignment=TA_CENTER,
-        )
-        section_title_style = ParagraphStyle(
-            'CosmicSec', parent=styles['Heading2'],
-            fontSize=14, textColor=colors.HexColor('#1F2937'),
-            spaceAfter=8, spaceBefore=14, fontName='Helvetica-Bold',
-        )
-        body_style = ParagraphStyle(
-            'CosmicBody', parent=styles['BodyText'],
-            fontSize=10.5, alignment=TA_JUSTIFY,
-            spaceAfter=10, leading=15, textColor=colors.HexColor('#374151'),
-        )
-        footer_style = ParagraphStyle(
-            'CosmicFooter', parent=styles['Normal'],
-            fontSize=8, textColor=colors.grey, alignment=TA_CENTER,
-        )
+        date_str = format_date()
 
-        # Title page
-        elements.append(Spacer(1, 0.4 * inch))
-        elements.append(Paragraph(
-            "BEST Executive Function Galaxy Assessment\u2122",
-            ParagraphStyle('CosmicSmall', parent=styles['Normal'],
-                           fontSize=10, textColor=colors.HexColor('#6B7280'),
-                           spaceAfter=8, alignment=TA_CENTER),
-        ))
-        elements.append(Paragraph("Cosmic Integration Dashboard", title_style))
-        elements.append(Paragraph(
-            'Cross-Environmental Executive Function Synthesis',
-            subtitle_style,
-        ))
-        elements.append(HRFlowable(
-            width="100%", thickness=2,
-            color=colors.HexColor('#4F46E5'), spaceAfter=12,
-        ))
-
-        ts = datetime.now().strftime('%B %d, %Y')
-        info_table = Table(
-            [
-                ['Prepared for:', (user_id or 'N/A')[:40]],
-                ['Report Date:', ts],
-            ],
-            colWidths=[1.8 * inch, 4.2 * inch],
+        # ── Cover Page ──
+        elements += build_cover_page(
+            report_title='Cosmic Integration Dashboard',
+            report_subtitle='Cross-Environmental Executive Function Synthesis',
+            user_name=(user_id or 'N/A')[:40],
+            date_str=date_str,
+            lens_label='Cosmic Integration',
+            accent_color=accent,
         )
-        info_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#312E81')),
-            ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#1F2937')),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ]))
-        elements.append(info_table)
+        elements += _build_short_disclaimer_flowable()
         elements.append(PageBreak())
 
-        # Cross-domain analytical layer
+        # Cross-domain analytical layer.
+        # Older assessments (pre-Phase 4.5) don't have `cross_domain` stored,
+        # so we compute it lazily from the saved scores when missing — that
+        # way the dashboard's analytical front-half doesn't render empty for
+        # legacy data.
         cross = (assessment_data or {}).get('cross_domain', {}) or {}
+        if not cross:
+            try:
+                from scoring_engine.cross_domain import compute_cross_domain
+                cs = (assessment_data or {}).get('construct_scores', {}) or {}
+                doms = (assessment_data or {}).get('domains', []) or []
+                ad = (assessment_data or {}).get('applied_domains', {}) or {}
+                if cs and doms:
+                    cross = compute_cross_domain(
+                        construct_scores=cs, domains=doms, applied_domains=ad,
+                    ) or {}
+                    logger.info("Cosmic dashboard PDF: computed cross_domain on the fly")
+            except Exception as _e:
+                logger.warning("Cosmic dashboard PDF: cross_domain compute failed: %s", _e)
         lens_profiles = cross.get('lens_profiles', {}) or {}
         flows = cross.get('flows', []) or []
         compensations = cross.get('compensation_patterns', []) or []
         sensitivities = cross.get('system_wide_sensitivities', []) or []
 
+        sec_num = 1
+
         # Lens profile table
         if lens_profiles:
-            elements.append(Paragraph('Lens Profiles', section_title_style))
+            elements.append(SectionHeader(sec_num, 'Lens Profiles', accent_color=THEME['indigo']))
+            elements.append(Spacer(1, 0.08 * inch))
+            sec_num += 1
             lens_rows = [['Lens', 'BHP (capacity)', 'PEI (load)', 'Balance', 'Status']]
             lens_label_map = {
                 'STUDENT_SUCCESS': 'Student / Academic',
@@ -1898,97 +2169,153 @@ def generate_cosmic_dashboard_pdf(
                 'FAMILY_ECOSYSTEM': 'Family / Ecosystem',
             }
             for lens, profile in lens_profiles.items():
+                bal = profile.get('load_balance', 0)
+                bal_color = THEME['green'] if bal >= 0 else THEME['red']
                 lens_rows.append([
                     lens_label_map.get(lens, lens),
                     f"{profile.get('bhp', 0):.2f}",
                     f"{profile.get('pei', 0):.2f}",
-                    f"{profile.get('load_balance', 0):+.2f}",
-                    profile.get('status', '—').title(),
+                    f"{bal:+.2f}",
+                    profile.get('status', '\u2014').title(),
                 ])
             lens_tbl = Table(lens_rows, colWidths=[2.0 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch, 1.0 * inch])
-            lens_tbl.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#EEF2FF')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#312E81')),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 10),
-                ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#E5E7EB')),
-                ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ]))
+            lens_tbl.setStyle(TableStyle(
+                themed_table_style(THEME['indigo']) + [
+                    ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+                ]
+            ))
             elements.append(lens_tbl)
             elements.append(Spacer(1, 0.2 * inch))
 
         # Cross-domain flows
         if flows:
-            elements.append(Paragraph('Cross-Domain Load Transfers', section_title_style))
+            elements.append(SectionHeader(sec_num, 'Cross-Domain Load Transfers',
+                                          accent_color=THEME['amber']))
+            elements.append(Spacer(1, 0.08 * inch))
+            sec_num += 1
             for f in flows[:10]:
                 line = (
-                    f"<b>{f.get('from', '?').title()} → {f.get('to', '?').title()}</b> "
-                    f"— strength {f.get('strength', 0):.2f}"
+                    f"<b>{f.get('from', '?').title()} \u2192 {f.get('to', '?').title()}</b> "
+                    f"\u2014 strength {f.get('strength', 0):.2f}"
                 )
                 if f.get('rationale') and f['rationale'] != 'baseline cross-domain coupling':
                     line += f" <i>({f['rationale']})</i>"
-                elements.append(Paragraph(line, body_style))
+                elements.append(Paragraph(line, ts['body']))
             elements.append(Spacer(1, 0.15 * inch))
 
         # Compensation patterns
         if compensations:
-            elements.append(Paragraph('Compensation Patterns', section_title_style))
+            elements.append(SectionHeader(sec_num, 'Compensation Patterns',
+                                          accent_color=THEME['blue']))
+            elements.append(Spacer(1, 0.08 * inch))
+            sec_num += 1
             for c in compensations[:8]:
-                elements.append(Paragraph(
-                    f"<b>{c.get('stabilizer', '')} → {c.get('vulnerability', '')}</b> "
-                    f"— gap {c.get('gap', 0):+.2f}<br/>{c.get('narrative', '')}",
-                    body_style,
+                elements.append(CalloutBox(
+                    f"{c.get('stabilizer', '')} \u2192 {c.get('vulnerability', '')}",
+                    f"Gap: {c.get('gap', 0):+.2f}  \u2014  {c.get('narrative', '')}",
+                    accent_color=THEME['blue'], bg_color=THEME['blue_light'],
                 ))
-            elements.append(Spacer(1, 0.15 * inch))
+                elements.append(Spacer(1, 0.04 * inch))
+            elements.append(Spacer(1, 0.1 * inch))
 
         # System-wide sensitivities
         if sensitivities:
-            elements.append(Paragraph('System-Wide Sensitivities', section_title_style))
+            elements.append(SectionHeader(sec_num, 'System-Wide Sensitivities',
+                                          accent_color=THEME['red']))
+            elements.append(Spacer(1, 0.08 * inch))
+            sec_num += 1
             for s in sensitivities[:8]:
-                elements.append(Paragraph(
-                    f"<b>{s.get('domain', '')}</b>: {s.get('pattern', '')}",
-                    body_style,
+                elements.append(CalloutBox(
+                    s.get('domain', ''), s.get('pattern', ''),
+                    accent_color=THEME['red'], bg_color=THEME['red_light'],
                 ))
-            elements.append(Spacer(1, 0.2 * inch))
+                elements.append(Spacer(1, 0.04 * inch))
+            elements.append(Spacer(1, 0.15 * inch))
 
-        # Cosmic narrative (if available)
+        # Cosmic narrative (if available).
+        # IMPORTANT: these keys/titles MUST match
+        # `prompts.section_rules.COSMIC_REPORT_SECTIONS` — the AI emits
+        # exactly those keys.  An earlier version of this list used keys
+        # that the AI never produces (e.g. archetype_evolution,
+        # compensation_patterns, stabilizers_across_universe,
+        # lens_overlay_summary, long_term_trajectory, closing_synthesis),
+        # which silently dropped 6 of the 11 sections and left the PDF
+        # mostly empty.
         if cosmic_report:
             sections = cosmic_report.get('sections', {}) or {}
+            # Strip stale markdown wrappers (e.g. "**Academic**: ..." that
+            # leaked from earlier prompt builds).  The sanitizer also runs
+            # in `report_generator.get_report`, but the cosmic dashboard
+            # endpoint queries Supabase directly and would otherwise bypass
+            # it, leaving literal asterisks in the rendered PDF.
+            if sections:
+                try:
+                    from scoring_engine.report_generator import _sanitize_stored_sections
+                    sections = (_sanitize_stored_sections({"sections": sections}) or {}).get("sections", sections)
+                except Exception:
+                    pass
             if sections:
                 elements.append(PageBreak())
-                elements.append(Paragraph('Cosmic Integration Narrative', title_style))
+                elements.append(Paragraph('Cosmic Integration Narrative', ts['title']))
+                elements.append(Spacer(1, 0.1 * inch))
                 cosmic_order = [
-                    ('cosmic_snapshot', 'Cosmic Snapshot'),
-                    ('galaxy_convergence_map', 'Galaxy Convergence Map'),
-                    ('archetype_evolution', 'Archetype Evolution'),
-                    ('cross_domain_load_transfer', 'Cross-Domain Load Transfer'),
-                    ('compensation_patterns', 'Compensation Patterns'),
-                    ('system_wide_sensitivity', 'System-Wide Sensitivity'),
-                    ('stabilizers_across_universe', 'Stabilizers Across Your Universe'),
-                    ('lens_overlay_summary', 'Lens Overlay Summary'),
-                    ('cosmic_aims', 'Cosmic AIMS Pathway'),
-                    ('long_term_trajectory', 'Long-Term Trajectory'),
-                    ('closing_synthesis', 'Closing Synthesis'),
+                    ('cosmic_snapshot',              'Cosmic Snapshot'),
+                    ('galaxy_convergence_map',       'Galaxy Convergence Map\u2122'),
+                    ('load_balance_matrix',          'Load Balance Matrix\u2122'),
+                    ('cross_domain_load_transfer',   'Cross-Domain Load Transfer Analysis'),
+                    ('core_system_identity',         'Core System Identity Under Load'),
+                    ('global_strength_architecture', 'Global Strength Architecture'),
+                    ('system_wide_sensitivity',      'System-Wide Load Sensitivity Zones'),
+                    ('pattern_continuity_amplified', 'Pattern Continuity Amplified\u2122'),
+                    ('cosmic_aims',                  'AIMS for the BEST\u2122 \u2014 Cosmic Level'),
+                    ('expansion_pathway',            'Expansion Pathway'),
+                    ('cosmic_summary',               'Cosmic Summary'),
                 ]
-                for key, title in cosmic_order:
+                # Render in the canonical order; tolerate missing keys (the
+                # AI is allowed to omit a section if data is sparse).
+                rendered = 0
+                for ci, (key, title) in enumerate(cosmic_order):
                     text = sections.get(key)
                     if not text:
                         continue
-                    elements.append(Paragraph(title, section_title_style))
+                    elements.append(SectionHeader(sec_num, title,
+                                                  accent_color=accent))
+                    elements.append(Spacer(1, 0.06 * inch))
+                    sec_num += 1
                     for para in str(text).strip().split('\n\n'):
                         clean = para.strip().replace('\n', ' ')
                         if clean:
-                            elements.append(Paragraph(clean, body_style))
+                            elements.append(Paragraph(clean, ts['body']))
+                    elements.append(Spacer(1, 0.1 * inch))
+                    rendered += 1
+                    if rendered % 3 == 0:
+                        elements.append(PageBreak())
+
+                # If the AI returned any extra keys we don't have in the
+                # canonical order (forward compatibility), surface them at
+                # the end rather than dropping them silently.
+                extras = [k for k in sections.keys() if k not in {x[0] for x in cosmic_order}]
+                for key in extras:
+                    text = sections.get(key)
+                    if not text:
+                        continue
+                    title = key.replace('_', ' ').title()
+                    elements.append(SectionHeader(sec_num, title, accent_color=accent))
+                    elements.append(Spacer(1, 0.06 * inch))
+                    sec_num += 1
+                    for para in str(text).strip().split('\n\n'):
+                        clean = para.strip().replace('\n', ' ')
+                        if clean:
+                            elements.append(Paragraph(clean, ts['body']))
                     elements.append(Spacer(1, 0.1 * inch))
 
-        elements.append(Paragraph(
-            "BEST Executive Function Galaxy Assessment\u2122 | Cosmic Dashboard | Confidential",
-            footer_style,
-        ))
+        # Append the full Legal & Medical Disclaimer at the end of every PDF.
+        elements += _build_full_disclaimer_flowables()
 
-        doc.build(elements)
+        # Build with themed page template
+        doc.build(elements,
+                  onFirstPage=page_tpl.first_page,
+                  onLaterPages=page_tpl.later_pages)
         pdf_bytes = buffer.getvalue()
         buffer.close()
 
